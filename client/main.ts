@@ -1,3 +1,4 @@
+import type { CombatView } from '../shared/sim/combat';
 import Phaser from 'phaser';
 import { Client } from 'colyseus.js';
 import { currentHandshake, versionsMatch, type WorkerResponse } from '../shared/protocol';
@@ -9,11 +10,12 @@ const workerStatus = document.querySelector('#worker-status')!;
 const driveStatus = document.querySelector<HTMLElement>('#drive-status')!;
 const worker = new Worker(new URL('./solo-worker/worker.ts', import.meta.url), { type: 'module' });
 let state: Tank | undefined;
+let combat: CombatView | undefined;
 let gameScene: Playground | undefined;
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const m = event.data;
   if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start' }); }
-  else if (m.type === 'state') { state = m.tank; driveStatus.dataset.x = String(state.x); driveStatus.dataset.y = String(state.y); driveStatus.dataset.speed = String(state.speed); driveStatus.textContent = `Position ${Math.round(state.x)}, ${Math.round(state.y)} · speed ${Math.round(state.speed)} px/s`; }
+  else if (m.type === 'state') { state = m.tank; combat = m.combat; driveStatus.dataset.weapon = combat.weapon; driveStatus.dataset.hits = String(combat.hits); driveStatus.dataset.x = String(state.x); driveStatus.dataset.y = String(state.y); driveStatus.dataset.speed = String(state.speed); driveStatus.textContent = `Position ${Math.round(state.x)}, ${Math.round(state.y)} · speed ${Math.round(state.speed)} px/s`; }
   else workerStatus.textContent = `Worker error: ${m.message}`;
 };
 worker.onerror = () => { workerStatus.textContent = 'Worker failed to start. Reload to retry.'; };
@@ -22,12 +24,16 @@ class Playground extends Phaser.Scene {
   private hull!: Phaser.GameObjects.Graphics;
   private turret!: Phaser.GameObjects.Graphics;
   private cursor!: Phaser.GameObjects.Graphics;
+  private battle!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private activeInput = true;
   constructor() { super('playground'); }
   create(): void {
     gameScene = this;
+    this.input.mouse?.disableContextMenu();
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => worker.postMessage({ type: 'weapon', action: p.rightButtonDown() ? 'cancel' : 'press' }));
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => { if (p.button === 0) worker.postMessage({ type: 'weapon', action: 'release' }); });
     const colors = { grass: 0x263a30, road: 0x696453, mud: 0x594a37, brush: 0x40593a };
     const ground = this.add.graphics();
     trainingMap.terrain.forEach((tile, i) => {
@@ -36,12 +42,12 @@ class Playground extends Phaser.Scene {
       ground.lineStyle(1, 0xffffff, 0.035).strokeRect(x, y, 32, 32);
     });
     for (const wall of trainingMap.walls) ground.fillStyle(0x879080).fillRect(wall.x, wall.y, wall.width, wall.height).lineStyle(2, 0xb5c3ac).strokeRect(wall.x, wall.y, wall.width, wall.height);
-    this.hull = this.add.graphics(); this.turret = this.add.graphics(); this.cursor = this.add.graphics();
+    this.hull = this.add.graphics(); this.turret = this.add.graphics(); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
     this.hud = this.add.text(18, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#edf4df', backgroundColor: '#101b17cc', padding: { x: 8, y: 6 } }).setScrollFactor(0);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
     this.cameras.main.setBounds(0, 0, trainingMap.width * 32, trainingMap.height * 32).centerOn(160, 272);
   }
-  neutralize(): void { this.activeInput = false; worker.postMessage({ type: 'input', input: { ...neutralInput(), aim: state?.turret ?? 0 } }); this.input.keyboard?.resetKeys(); }
+  neutralize(): void { this.activeInput = false; worker.postMessage({ type: 'neutralize' }); worker.postMessage({ type: 'input', input: { ...neutralInput(), aim: state?.turret ?? 0 } }); this.input.keyboard?.resetKeys(); }
   reactivate(): void { this.activeInput = true; }
   update(_time: number, delta: number): void {
     if (!state) return;
@@ -58,8 +64,18 @@ class Playground extends Phaser.Scene {
     const leadX = Phaser.Math.Clamp(pointer.x - 480, -240, 240) / 3, leadY = Phaser.Math.Clamp(pointer.y - 270, -240, 240) / 3;
     const cam = this.cameras.main, blend = 1 - Math.exp(-Math.min(delta, 100) / 180);
     cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, state.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, state.y + leadY, blend));
+    this.battle.clear();
+    if (combat) {
+      for (const target of combat.targets) {
+        if (target.hp <= 0) continue;
+        this.battle.fillStyle(0xb87360).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
+        this.battle.fillStyle(0x151c17).fillRect(target.x - 22, target.y - 34, 44, 5).fillStyle(0xf2bf78).fillRect(target.x - 22, target.y - 34, 44 * target.hp / 100, 5);
+      }
+      for (const shell of combat.shells) this.battle.fillStyle(0xffedab).fillCircle(shell.x, shell.y, 2 + shell.charge * 2);
+      if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(state.x, state.y, 28 + combat.charge * 6);
+    }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement`);
+    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nLMB HOLD/RELEASE FIRE · RMB CANCEL\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
 new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });

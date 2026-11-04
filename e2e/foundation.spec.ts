@@ -33,3 +33,16 @@ test('driving stops after focus is lost', async ({ page }) => {
   expect(Number(await status.getAttribute('data-x'))).toBeCloseTo(stopped, 3);
   await page.keyboard.up('d');
 });
+
+
+test('tap fire damages a target through Worker authority', async ({ page }) => {
+  await page.goto('/');
+  const status = page.locator('#drive-status');
+  await expect(status).toHaveAttribute('data-weapon', 'ready');
+  const box = await page.locator('canvas').boundingBox();
+  if (!box) throw new Error('Canvas missing');
+  await page.mouse.move(box.x + box.width * 350 / 960, box.y + box.height * 272 / 540);
+  await page.waitForTimeout(800);
+  await page.mouse.down(); await page.mouse.up();
+  await expect.poll(async () => Number(await status.getAttribute('data-hits'))).toBe(1);
+});

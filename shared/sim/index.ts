@@ -27,7 +27,7 @@ function blocked(map: GameMap, x: number, y: number): boolean {
   });
 }
 /** Fixed-step movement shared by every host. Angles are world-relative radians. */
-export function driveTank(tank: Tank, input: DriveInput, map: GameMap): void {
+export function driveTank(tank: Tank, input: DriveInput, map: GameMap, mobility = 1): void {
   const magnitude = Math.hypot(input.x, input.y);
   const moving = Number.isFinite(magnitude) && magnitude > 0;
   let alignment = 0;
@@ -39,7 +39,7 @@ export function driveTank(tank: Tank, input: DriveInput, map: GameMap): void {
   }
   if (Number.isFinite(input.aim)) tank.turret = approachAngle(tank.turret, input.aim, TUNING.turretTurn * DT);
   const cap = speedCap(map, tank.x, tank.y, input.silent);
-  const target = cap * alignment;
+  const target = cap * alignment * mobility;
   const rate = target > tank.speed ? TUNING.grassSpeed / 0.25 : TUNING.grassSpeed / 0.15;
   tank.speed += Math.max(-rate * DT, Math.min(rate * DT, target - tank.speed));
   const dx = Math.cos(tank.hull) * tank.speed * DT;
