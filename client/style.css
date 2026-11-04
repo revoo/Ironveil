@@ -1,0 +1,1 @@
+:root{font-family:system-ui,sans-serif;color:#dce6d4;background:#111a16}body{margin:0}main{max-width:960px;margin:2rem auto;padding:0 1rem}h1{letter-spacing:.2em;margin:0;color:#dce9c7}p{color:#a4b6a4;font-size:.9rem}#game{width:100%;aspect-ratio:16/9;background:#263a30;overflow:hidden;border:1px solid #4b6050}canvas{display:block}
