@@ -1,7 +1,7 @@
 import { TUNING, type GameMap, type Terrain } from '../content';
 
 export interface DriveInput { x: number; y: number; aim: number; silent: boolean }
-export interface Tank { x: number; y: number; hull: number; turret: number; speed: number }
+export interface Tank { x: number; y: number; hull: number; turret: number; speed: number; ramp?: { from: number; target: number; tick: number; ticks: number } }
 export const neutralInput = (): DriveInput => ({ x: 0, y: 0, aim: 0, silent: false });
 const DT = 1 / TUNING.tickRate;
 const factors: Record<Terrain, number> = { grass: 1, road: 1.1, mud: 0.65, brush: 0.8 };
@@ -40,8 +40,21 @@ export function driveTank(tank: Tank, input: DriveInput, map: GameMap, mobility 
   if (Number.isFinite(input.aim)) tank.turret = approachAngle(tank.turret, input.aim, TUNING.turretTurn * DT);
   const cap = speedCap(map, tank.x, tank.y, input.silent);
   const target = cap * alignment * mobility;
-  const rate = target > tank.speed ? TUNING.grassSpeed / 0.25 : TUNING.grassSpeed / 0.15;
-  tank.speed += Math.max(-rate * DT, Math.min(rate * DT, target - tank.speed));
+  const ramp = tank.ramp;
+  if (ramp && ramp.target !== target && ramp.tick < ramp.ticks && Math.sign(target - tank.speed) === Math.sign(ramp.target - ramp.from)) {
+    // Retarget without restarting the curve every tick (charge and turning caps vary continuously).
+    const progress = ramp.tick / ramp.ticks;
+    const eased = progress * progress * (3 - 2 * progress);
+    ramp.from = (tank.speed - target * eased) / (1 - eased);
+    ramp.target = target;
+  } else if (!ramp || ramp.target !== target) {
+    tank.ramp = { from: tank.speed, target, tick: 0, ticks: Math.ceil((target > tank.speed ? TUNING.accelerationSeconds : TUNING.brakingSeconds) * TUNING.tickRate) };
+  }
+  const current = tank.ramp!;
+  current.tick = Math.min(current.ticks, current.tick + 1);
+  const t = current.tick / current.ticks;
+  const eased = t * t * (3 - 2 * t);
+  tank.speed = current.from + (current.target - current.from) * eased;
   const dx = Math.cos(tank.hull) * tank.speed * DT;
   const dy = Math.sin(tank.hull) * tank.speed * DT;
   // Axis-separated movement allows sliding along cover; distance per tick is below the hull radius.

@@ -1,4 +1,4 @@
-export const TUNING = Object.freeze({ tickRate: 30, grassSpeed: 180, tankRadius: 20, hullTurn: 220 * Math.PI / 180, turretTurn: 150 * Math.PI / 180 });
+export const TUNING = Object.freeze({ tickRate: 30, accelerationSeconds: 0.6, brakingSeconds: 0.35, grassSpeed: 180, tankRadius: 20, hullTurn: 220 * Math.PI / 180, turretTurn: 150 * Math.PI / 180 });
 export type Terrain = 'grass' | 'road' | 'mud' | 'brush';
 export interface GameMap { version: number; id: string; width: number; height: number; tileSize: number; terrain: Terrain[]; walls: { id: string; x: number; y: number; width: number; height: number }[] }
 const width = 50, height = 30;

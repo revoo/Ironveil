@@ -14,7 +14,7 @@ describe('fixed-step driving', () => {
   });
   it('rotates in place when facing away and decelerates after release', () => {
     const t = tank(); run(t, -1, 0, 1); expect(t.speed).toBe(0); expect(t.hull).not.toBe(0);
-    const moving = tank(); run(moving, 1, 0, 30); expect(moving.speed).toBe(180); run(moving, 0, 0, 5); expect(moving.speed).toBe(0);
+    const moving = tank(); run(moving, 1, 0, 30); expect(moving.speed).toBe(180); run(moving, 0, 0, 5); expect(moving.speed).toBeGreaterThan(0); run(moving, 0, 0, 10); expect(moving.speed).toBe(0);
   });
   it('applies terrain and silent speed factors', () => {
     const mud = { ...map, terrain: Array(map.width * map.height).fill('mud') };
@@ -38,4 +38,27 @@ describe('fixed-step driving', () => {
     for (let frame = 0; frame < 120; frame++) { if (frame % 4 === 0) b.step(input); }
     expect(a.tank).toEqual(b.tank);
   });
+});
+
+
+it('eases into acceleration and braking instead of changing speed at a constant rate', () => {
+  const t = tank();
+  const speeds = [0];
+  for (let i = 0; i < 18; i++) { run(t, 1, 0, 1); speeds.push(t.speed); }
+  expect(speeds[1]).toBeLessThan(10);
+  expect(speeds[8] - speeds[7]).toBeGreaterThan(speeds[1] - speeds[0]);
+  expect(speeds[18] - speeds[17]).toBeLessThan(speeds[8] - speeds[7]);
+  expect(t.speed).toBeCloseTo(180);
+  const x = t.x;
+  run(t, 0, 0, 1); const firstBrake = 180 - t.speed;
+  run(t, 0, 0, 1); const secondBrake = 180 - firstBrake - t.speed;
+  expect(secondBrake).toBeGreaterThan(firstBrake);
+  run(t, 0, 0, 15); expect(t.speed).toBe(0); expect(t.x - x).toBeGreaterThan(20); expect(t.x - x).toBeLessThan(40);
+});
+
+
+it('responds to a continuously changing charge speed cap', () => {
+  const t = tank(); run(t, 1, 0, 30);
+  for(let i=1;i<=45;i++) driveTank(t,{x:1,y:0,aim:0,silent:false},map,1-0.45*i/45);
+  expect(t.speed).toBeLessThan(120);
 });
