@@ -35,7 +35,7 @@ test('driving stops after focus is lost', async ({ page }) => {
 });
 
 
-test('tap fire damages a target through Worker authority', async ({ page }) => {
+test('Space tap damages a target through Worker authority', async ({ page }) => {
   await page.goto('/');
   const status = page.locator('#drive-status');
   await expect(status).toHaveAttribute('data-weapon', 'ready');
@@ -43,6 +43,22 @@ test('tap fire damages a target through Worker authority', async ({ page }) => {
   if (!box) throw new Error('Canvas missing');
   await page.mouse.move(box.x + box.width * 350 / 960, box.y + box.height * 272 / 540);
   await page.waitForTimeout(800);
-  await page.mouse.down(); await page.mouse.up();
+  await page.keyboard.press('Space');
   await expect.poll(async () => Number(await status.getAttribute('data-hits'))).toBe(1);
+});
+
+
+test('Space holds charge, right click cancels, and left click does not fire', async ({ page }) => {
+  await page.goto('/');
+  const status = page.locator('#drive-status');
+  await expect(status).toHaveAttribute('data-weapon', 'ready');
+  await page.locator('canvas').click();
+  await page.waitForTimeout(100);
+  await expect(status).toHaveAttribute('data-weapon', 'ready');
+  await page.keyboard.down('Space');
+  await expect(status).toHaveAttribute('data-weapon', 'charging');
+  await page.locator('canvas').click({ button: 'right' });
+  await expect(status).toHaveAttribute('data-weapon', 'cancel recovery');
+  await page.keyboard.up('Space');
+  await expect(status).toHaveAttribute('data-weapon', 'ready');
 });

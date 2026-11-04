@@ -32,8 +32,10 @@ class Playground extends Phaser.Scene {
   create(): void {
     gameScene = this;
     this.input.mouse?.disableContextMenu();
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => worker.postMessage({ type: 'weapon', action: p.rightButtonDown() ? 'cancel' : 'press' }));
-    this.input.on('pointerup', (p: Phaser.Input.Pointer) => { if (p.button === 0) worker.postMessage({ type: 'weapon', action: 'release' }); });
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.rightButtonDown()) worker.postMessage({ type: 'weapon', action: 'cancel' }); });
+    const fire = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    fire.on('down', () => { if (this.activeInput) worker.postMessage({ type: 'weapon', action: 'press' }); });
+    fire.on('up', () => { if (this.activeInput) worker.postMessage({ type: 'weapon', action: 'release' }); });
     const colors = { grass: 0x263a30, road: 0x696453, mud: 0x594a37, brush: 0x40593a };
     const ground = this.add.graphics();
     trainingMap.terrain.forEach((tile, i) => {
@@ -75,7 +77,7 @@ class Playground extends Phaser.Scene {
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(state.x, state.y, 28 + combat.charge * 6);
     }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nLMB HOLD/RELEASE FIRE · RMB CANCEL\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
+    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
 new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });
