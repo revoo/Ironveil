@@ -42,9 +42,17 @@ export function createBattlefield(scene:Phaser.Scene,map:GameMap):void{
  }
  for(const w of map.walls){
   g.fillStyle(0x303d38).fillRect(w.x,w.y,w.width,w.height);
-  g.fillStyle(0x747d70).fillRect(w.x+2,w.y+2,w.width-4,w.height-4);
+  const nearest=[...(map.landmarks??[])].sort((a,b)=>Math.hypot(a.x-w.x-w.width/2,a.y-w.y-w.height/2)-Math.hypot(b.x-w.x-w.width/2,b.y-w.y-w.height/2))[0]?.name;
+  const roof=nearest==='Depot'?0x8b7058:nearest==='Radio Tower'?0x727f79:0x858577;
+  g.fillStyle(roof).fillRect(w.x+2,w.y+2,w.width-4,w.height-4);
   g.lineStyle(2,0xa3aa93).lineBetween(w.x+2,w.y+2,w.x+w.width-2,w.y+2).lineBetween(w.x+2,w.y+2,w.x+2,w.y+w.height-2);
-  for(let y=w.y+12;y<w.y+w.height-4;y+=16)g.lineStyle(1,0x434e46,.7).lineBetween(w.x+5,y,w.x+w.width-5,y);
+  for(let y=w.y+12;y<w.y+w.height-4;y+=16){
+   g.lineStyle(1,0x434e46,.7).lineBetween(w.x+5,y,w.x+w.width-5,y);
+   if(nearest==='Radio Tower')g.lineBetween(w.x+5,y-8,w.x+w.width-5,y+4).lineBetween(w.x+w.width-5,y-8,w.x+5,y+4);
+  }
+  if(nearest==='Depot'&&w.width>24&&w.height>24)g.fillStyle(0x4d5045).fillRect(w.x+8,w.y+8,Math.min(24,w.width-16),12).lineStyle(1,0xb3a081).strokeRect(w.x+8,w.y+8,Math.min(24,w.width-16),12);
+  if(nearest==='Broken Bridge')for(let x=w.x+4;x<w.x+w.width-8;x+=14)g.fillStyle(0xc5a65e).fillRect(x,w.y+4,7,3);
+
   g.lineStyle(2,0x242f29).strokeRect(w.x,w.y,w.width,w.height);
  }
  g.generateTexture('battlefield',map.width*map.tileSize,map.height*map.tileSize);g.destroy();scene.add.image(0,0,'battlefield').setOrigin(0);

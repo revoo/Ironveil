@@ -6,12 +6,11 @@ import {setupOffline} from './offline';
 import {LESSONS,TutorialProgress} from './tutorial';
 import {relaySmallMap} from '../shared/content/relay-yard';
 import type { Observation, ActorView } from '../shared/sim/match';
-import { audioData } from './audio';
+import {audioData,musicWav,wavData} from './audio';
 import type { CombatEvent } from '../shared/sim/combat';
-import { PoseBuffer } from './presentation';
+import {PoseBuffer,EventInbox} from './presentation';
 import type { CombatView } from '../shared/sim/combat';
 import Phaser from 'phaser';
-import { Client } from 'colyseus.js';
 import { currentHandshake, versionsMatch, type WorkerResponse } from '../shared/protocol';
 import { trainingMap as rangeMap, validateMap } from '../shared/content';
 import { neutralInput, speedCap, terrainAt, type Tank } from '../shared/sim';
@@ -27,16 +26,22 @@ let lastSoloTick = -1, targetKey = '';
 const matchStatus = document.querySelector<HTMLElement>('#match-status')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
 if(!rangeMode)document.querySelector('#mode-label')!.textContent='Relay Yard · team deathmatch · solo 2 vs 2';
-if(rangeMode) { document.querySelector('#mode-label')!.after(document.querySelector('#settings')!);document.querySelector<HTMLElement>('#return-solo')!.hidden=false; document.querySelector<HTMLElement>('#match-panel')!.hidden = true; document.querySelector('#mode-label')!.textContent='Cannon laboratory · range'; }
+if(rangeMode) { document.querySelector('#mode-label')!.after(document.querySelector('#fullscreen')!);document.querySelector('#mode-label')!.after(document.querySelector('#settings')!);document.querySelector<HTMLElement>('#return-solo')!.hidden=false; document.querySelector<HTMLElement>('#match-panel')!.hidden = true; document.querySelector('#mode-label')!.textContent='Cannon laboratory · range'; }
 function pause(value:boolean):void { worker.postMessage({type:'neutralize'}); worker.postMessage({type:'pause',value}); gameScene?.clearKeys(); if(!value)document.querySelector<HTMLCanvasElement>('canvas')?.focus(); }
 pauseButton.onclick=()=>pause(!solo?.paused);
-const restart=()=>{if(tutorialMode){tutorialProgress=new TutorialProgress();showLesson();}worker.postMessage({type:'reset',difficulty:settings.difficulty});gameScene?.clearKeys();document.querySelector<HTMLCanvasElement>('canvas')?.focus();};
+const scoreboard=document.querySelector<HTMLElement>('#scoreboard')!;
+const showScoreboard=(show:boolean)=>{scoreboard.hidden=!show;if(show&&solo)scoreboard.textContent=`Blue ${solo.scores[0]} — ${solo.scores[1]} Red · First to ${solo.killTarget} kills · ${Math.ceil(solo.secondsLeft)}s${solo.sudden?' · SUDDEN DEATH':''}\n${solo.allies.map(a=>(a.id===0?'You':'Wingman')+': '+(a.hp>0?'HP '+a.hp:'Respawn '+(a.respawn/30).toFixed(1)+'s')).join(' · ')}\nEnemy live status is concealed.`;};
+document.querySelector<HTMLButtonElement>('#scoreboard-button')!.onclick=()=>showScoreboard(scoreboard.hidden);
+document.querySelector<HTMLButtonElement>('#fullscreen')!.onclick=()=>{const field=document.querySelector<HTMLElement>('#game')!;if(document.fullscreenElement)void document.exitFullscreen();else void field.requestFullscreen?.().catch(()=>{workerStatus.textContent='Fullscreen unavailable in this browser.';});};
+document.addEventListener('fullscreenchange',()=>gameScene?.scale.refresh());
+const restart=()=>{showScoreboard(false);if(tutorialMode){tutorialProgress=new TutorialProgress();showLesson();}worker.postMessage({type:'reset',difficulty:settings.difficulty});gameScene?.clearKeys();document.querySelector<HTMLCanvasElement>('canvas')?.focus();};
 document.querySelector<HTMLButtonElement>('#restart')!.onclick=restart;
 document.querySelector<HTMLButtonElement>('#play-again')!.onclick=restart;document.querySelector<HTMLButtonElement>('#restart-tutorial')!.onclick=restart;showLesson();
 
 const workerStatus = document.querySelector('#worker-status')!;
 const driveStatus = document.querySelector<HTMLElement>('#drive-status')!;
 const worker = new Worker(new URL('./solo-worker/worker.ts', import.meta.url), { type: 'module' });
+const eventInbox=new EventInbox<CombatEvent>();
 let tankPoses = new PoseBuffer();
 const targetPoses = new Map<number, PoseBuffer>();
 let recoilUntil = 0, recoilStrength = 0, hitUntil = 0, hurtUntil = 0;
@@ -49,13 +54,14 @@ let gameScene: Playground | undefined;
 const settingsOpen=mountSettings(()=>settings,s=>{settings=s;controls.bindings=s.bindings;controls.clear();worker.postMessage({type:'neutralize'});document.documentElement.style.fontSize=16*s.textScale+'px';gameScene?.applySettings();},()=>pause(true),()=>{if(rangeMode)worker.postMessage({type:'pause',value:false});document.querySelector<HTMLCanvasElement>('canvas')?.focus();});
 document.documentElement.style.fontSize=16*settings.textScale+'px';
 function dispatch(action:string):void{
+ if(action==='scoreboard'||action==='scoreboard-close'){showScoreboard(action==='scoreboard');return;}
  if(action==='press'||action==='release'||action==='cancel')weapon(action);
  else if(action==='smoke'&&!rangeMode)worker.postMessage({type:'smoke',seq:++weaponSequence});
  else if(action==='pause')document.querySelector<HTMLButtonElement>('#settings')!.click();
  else if(action==='restart')restart();
  else if(action==='mute'&&gameScene){settings.muted=!gameScene.sound.mute;gameScene.sound.mute=settings.muted;saveSettings(settings);}
 }
-window.addEventListener('keydown',event=>{if(settingsOpen()||/^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test((event.target as HTMLElement)?.tagName??''))return;const actions=controls.down(event.code,event.repeat);if(Object.values(settings.bindings).includes(event.code))event.preventDefault();actions.forEach(dispatch);});
+window.addEventListener('keydown',event=>{if(event.code==='Tab'&&settings.bindings.scoreboard==='Tab'&&(event.target as HTMLElement)?.tagName!=='CANVAS')return;if(settingsOpen()||/^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test((event.target as HTMLElement)?.tagName??''))return;const actions=controls.down(event.code,event.repeat);if(Object.values(settings.bindings).includes(event.code))event.preventDefault();actions.forEach(dispatch);});
 window.addEventListener('keyup',event=>{if(settingsOpen())return;controls.up(event.code).forEach(dispatch);});
 let mouseClient:{x:number;y:number}|undefined;
 window.addEventListener('pointermove',event=>{mouseClient={x:event.clientX,y:event.clientY};if(tutorialMode)tutorialProgress.aimMoved();});
@@ -68,14 +74,14 @@ setInterval(()=>{if(!document.hidden&&performance.now()-lastWorkerAt>4000)failWo
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   lastWorkerAt=performance.now();let m = event.data;
   if(m.type === 'match') {
-    solo=m.observation;
+    solo=m.observation;if(!scoreboard.hidden)showScoreboard(true);
     if(tutorialMode&&m.tutorialStep===tutorialProgress.index&&tutorialProgress.observe(solo)){showLesson();controls.clear();worker.postMessage({type:'neutralize'});gameScene?.clearKeys();if(tutorialProgress.index<LESSONS.length)worker.postMessage({type:'lesson',index:tutorialProgress.index});else pause(true);}
 
     const me=solo.allies.find(a=>a.id===0)!;
     const feedback=combatHUD(solo);
     const cueText=[feedback.confirmation,...feedback.damageSectors.map(s=>'INCOMING '+SECTORS[s])].filter(Boolean).join(' · '),cueLine=document.querySelector('#combat-feedback')!;
     if(cueLine.textContent!==cueText)cueLine.textContent=cueText;
-    if(solo.tick < lastSoloTick) { tankPoses=new PoseBuffer();targetPoses.clear();shellPoses.clear(); }
+    if(solo.tick < lastSoloTick) { eventInbox.clear();tankPoses=new PoseBuffer();targetPoses.clear();shellPoses.clear(); }
     lastSoloTick=solo.tick;
     soloActors=[...solo.allies.filter(a=>a.id!==0),...solo.enemies];
     const key=soloActors.map(a=>a.id).join(','); if(key!==targetKey){targetPoses.clear();targetKey=key;}
@@ -94,7 +100,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     if (m.combat.weapon === 'reloading' && combat?.weapon !== 'reloading') { recoilUntil = performance.now() + 160; recoilStrength = 3 + 7 * (combat?.charge ?? 0); }
     if (m.combat.hits > (combat?.hits ?? 0)) hitUntil = performance.now() + 180;
     if (m.combat.hp < (combat?.hp ?? 100)) hurtUntil = performance.now() + 200;
-    combat = m.combat;driveStatus.dataset.charge=String(combat.charge);driveStatus.dataset.barrel=String(state.turret);
+    eventInbox.push(m.combat.events);combat = m.combat;driveStatus.dataset.charge=String(combat.charge);driveStatus.dataset.barrel=String(state.turret);
     driveStatus.dataset.hp = String(combat.hp); driveStatus.dataset.incoming = String(combat.incomingFire);
     const now = performance.now();
     tankPoses.push(m.tick, state, now);
@@ -108,6 +114,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 worker.onerror=failWorker;worker.onmessageerror=failWorker;
 worker.postMessage({ type: 'advance', ticks: 30 });
 class Playground extends Phaser.Scene {
+  private music?:Phaser.Sound.WebAudioSound;
   private hull!: Phaser.GameObjects.Image;
   private turret!: Phaser.GameObjects.Image;
   private cursor!: Phaser.GameObjects.Graphics;
@@ -123,13 +130,13 @@ class Playground extends Phaser.Scene {
   private help!:Phaser.GameObjects.Text;
   private unitSprites = new Map<number,{hull:Phaser.GameObjects.Image;turret:Phaser.GameObjects.Image}>();
   private activeInput = true;
-  clearKeys():void{controls.clear();this.input.keyboard?.resetKeys();}
+  clearKeys():void{showScoreboard(false);controls.clear();this.input.keyboard?.resetKeys();}
   private lastEffect = 0;
   private effects: {event: CombatEvent; until:number}[] = [];
-  preload():void { for(const kind of ['tap','full','impact','destruction','vent','engine','charge','smoke'] as const) this.load.audio(kind,audioData(kind)); }
+  preload():void {this.load.audio('music',wavData(musicWav())); for(const kind of ['tap','full','impact','destruction','vent','engine','charge','smoke'] as const) this.load.audio(kind,audioData(kind)); }
   constructor() { super('playground'); }
   create(): void {
-    gameScene = this;
+    gameScene = this;this.music=this.sound.add('music',{loop:true,volume:settings.musicVolume}) as Phaser.Sound.WebAudioSound;
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>{if(p.rightButtonDown()&&this.activeInput&&!settingsOpen())weapon('cancel');});
     this.input.keyboard!.addKey('T').on('down',()=>{if(rangeMode&&this.activeInput&&!settingsOpen()&&!Object.values(settings.bindings).includes('KeyT'))worker.postMessage({type:'range-fire'});});
@@ -147,13 +154,15 @@ class Playground extends Phaser.Scene {
     this.instruments=this.add.graphics().setScrollFactor(0).setDepth(8);
     this.confirmation=this.add.text(480,405,'',{fontFamily:'monospace',fontSize:'18px',color:'#ffebaf',backgroundColor:'#101b17cc',padding:{x:8,y:5}}).setOrigin(.5).setScrollFactor(0).setDepth(8);
     this.help=this.add.text(18,525,'',{fontFamily:'monospace',fontSize:'12px',color:'#c3d2bb',backgroundColor:'#101b17cc',padding:{x:6,y:4}}).setOrigin(0,1).setScrollFactor(0).setDepth(7);
-    this.applySettings();const canvas=this.game.canvas;canvas.tabIndex=0;canvas.setAttribute('aria-label','Tank battlefield; keyboard controls available in Settings');
+    this.applySettings();const canvas=this.game.canvas;canvas.addEventListener('webglcontextlost',()=>{this.music?.pause();pause(true);document.querySelector<HTMLElement>('#session-error')!.hidden=false;document.querySelector('#session-error p')!.textContent='Graphics context lost. Reload to restore the battlefield and start a fresh match.';});canvas.addEventListener('pointerdown',()=>canvas.focus());canvas.tabIndex=0;canvas.setAttribute('aria-label','Tank battlefield; keyboard controls available in Settings');
     this.cameras.main.setBounds(0, 0, trainingMap.width * 32, trainingMap.height * 32).centerOn(160, 272);
   }
-  applySettings():void{this.sound.volume=settings.volume;this.sound.mute=settings.muted;if(this.hud)this.hud.setFontSize(14*settings.textScale).setWordWrapWidth(720);for(const label of this.soundLabels)label.setFontSize(12*settings.textScale);this.confirmation?.setFontSize(18*settings.textScale);this.help?.setFontSize(12*settings.textScale).setWordWrapWidth(900);}
-  neutralize(): void { controls.clear();this.activeInput = false; worker.postMessage({ type: 'neutralize' }); worker.postMessage({ type: 'input', input: { ...neutralInput(), aim: state?.turret ?? 0 } }); this.input.keyboard?.resetKeys(); }
+  private playFX(key:string,config:Phaser.Types.Sound.SoundConfig):void{this.sound.play(key,{...config,volume:(config.volume??1)*settings.volume});}
+  applySettings():void{this.sound.volume=1;this.music?.setVolume(settings.musicVolume);this.sound.mute=settings.muted;if(this.hud)this.hud.setFontSize(14*settings.textScale).setWordWrapWidth(720);for(const label of this.soundLabels)label.setFontSize(12*settings.textScale);this.confirmation?.setFontSize(18*settings.textScale);this.help?.setFontSize(12*settings.textScale).setWordWrapWidth(900);}
+  neutralize(): void { showScoreboard(false);controls.clear();this.activeInput = false; worker.postMessage({ type: 'neutralize' }); worker.postMessage({ type: 'input', input: { ...neutralInput(), aim: state?.turret ?? 0 } }); this.input.keyboard?.resetKeys(); }
   reactivate(): void { this.activeInput = true; }
   update(_time: number, delta: number): void {
+    if(this.music&&!this.sound.locked){if(document.hidden||solo?.paused){if(this.music.isPlaying)this.music.pause();}else if(this.music.isPaused)this.music.resume();else if(!this.music.isPlaying)this.music.play();}
     driveStatus.dataset.audioReady = String(!this.sound.locked); driveStatus.dataset.muted = String(this.sound.mute);
     if (!state) return;
     const rendered = tankPoses.sample(performance.now()) ?? state;
@@ -175,12 +184,12 @@ class Playground extends Phaser.Scene {
     const cam = this.cameras.main, blend = settings.reducedMotion?1:1 - Math.exp(-Math.min(delta, 100) / 180);
     cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, rendered.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, rendered.y + leadY, blend));
     const now = performance.now();
-    for(const event of combat?.events ?? []) {
+    for(const event of eventInbox.drain()) {
       if(event.id <= this.lastEffect) continue;
       this.lastEffect = event.id;
       if(this.effects.length >= (settings.lowEffects?16:64)) this.effects.shift();
       this.effects.push({event,until:now+(event.kind === 'destruction' ? 450 : 220)});
-      if(!this.sound.locked) this.sound.play(event.kind === 'shot' ? (event.charge >= 0.5 ? 'full' : 'tap') : event.kind, {volume:event.kind === 'shot' ? 0.25+0.15*event.charge : 0.15});
+      if(!this.sound.locked) this.playFX(event.kind === 'shot' ? (event.charge >= 0.5 ? 'full' : 'tap') : event.kind, {volume:event.kind === 'shot' ? 0.25+0.15*event.charge : 0.15});
     }
     this.effects = this.effects.filter(effect=>effect.until > now);
     this.battle.clear();
@@ -196,11 +205,11 @@ class Playground extends Phaser.Scene {
       for(const sight of solo.sightings){const alpha=Math.max(0,(sight.expires-solo.tick)/90)*0.5;this.battle.lineStyle(2,0xc4b7a0,alpha).lineBetween(sight.x-10,sight.y-10,sight.x+10,sight.y+10).lineBetween(sight.x+10,sight.y-10,sight.x-10,sight.y+10);}
       this.soundFx.clear();this.soundLabels.forEach(l=>l.setVisible(false));
       for(const cue of solo.sounds){const angle=cue.sector*Math.PI/4,x=480+Math.cos(angle)*400,y=270+Math.sin(angle)*210;const label=this.soundLabels[cue.sector];label.setPosition(x,y).setText(cue.kind.toUpperCase()+' '+cue.band.toUpperCase()).setAlpha(cue.band==='near'?1:0.65).setVisible(true);this.soundFx.lineStyle(cue.band==='near'?4:2,0xe3bc81,0.8).strokeCircle(x,y,24);
-       if(cue.id>this.lastSound){this.lastSound=cue.id;if(!this.sound.locked)this.sound.play(cue.kind==='shot'?'tap':cue.kind,{volume:cue.band==='near'?0.1:0.045,pan:Math.cos(angle)*0.8});}
+       if(cue.id>this.lastSound){this.lastSound=cue.id;if(!this.sound.locked)this.playFX(cue.kind==='shot'?'tap':cue.kind,{volume:cue.band==='near'?0.1:0.045,pan:Math.cos(angle)*0.8});}
       }
-      const me=solo.allies[0];if(me.smokeIn>this.previousSmoke+1&&!this.sound.locked)this.sound.play('smoke',{volume:0.2});this.previousSmoke=me.smokeIn;
-      if(!solo.paused&&solo.result===null&&me.hp>0&&me.speed>8&&!me.quiet&&now>this.nextEngine){this.nextEngine=now+260;if(!this.sound.locked)this.sound.play('engine',{volume:0.025});}
-      if(!solo.paused&&solo.result===null&&combat?.weapon==='charging'&&now>this.nextHum){this.nextHum=now+220;if(!this.sound.locked)this.sound.play('charge',{volume:0.035+combat.charge*0.035,rate:0.8+combat.charge*0.7});}
+      const me=solo.allies[0];if(me.smokeIn>this.previousSmoke+1&&!this.sound.locked)this.playFX('smoke',{volume:0.2});this.previousSmoke=me.smokeIn;
+      if(!solo.paused&&solo.result===null&&me.hp>0&&me.speed>8&&!me.quiet&&now>this.nextEngine){this.nextEngine=now+260;if(!this.sound.locked)this.playFX('engine',{volume:0.025});}
+      if(!solo.paused&&solo.result===null&&combat?.weapon==='charging'&&now>this.nextHum){this.nextHum=now+220;if(!this.sound.locked)this.playFX('charge',{volume:0.035+combat.charge*0.035,rate:0.8+combat.charge*0.7});}
       const mini=this.mini;mini.clear().lineStyle(1,0x697566).strokeRect(780,16,160,96);
       for(const wall of trainingMap.walls)mini.fillStyle(0x879080).fillRect(780+wall.x/10,16+wall.y/10,wall.width/10,wall.height/10);
       for(const sight of solo.sightings){const x=780+sight.x/10,y=16+sight.y/10;mini.lineStyle(1,0xc4b7a0,0.5).lineBetween(x-3,y-3,x+3,y+3).lineBetween(x+3,y-3,x-3,y+3);}
@@ -227,7 +236,7 @@ class Playground extends Phaser.Scene {
       }
       driveStatus.dataset.enemySprites=String([...this.unitSprites.keys()].filter(id=>soloActors.find(a=>a.id===id)?.team===1).length);
       driveStatus.dataset.allySprites=String([...this.unitSprites.keys()].filter(id=>soloActors.find(a=>a.id===id)?.team===0).length);
-      for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.fillStyle(shell.hostile ? 0xff9177 : 0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
+      for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.lineStyle(1+shell.charge*2,shell.hostile?0xff9177:0xffedab,.6).lineBetween(pose.x-Math.cos(shell.angle)*(5+shell.charge*12),pose.y-Math.sin(shell.angle)*(5+shell.charge*12),pose.x,pose.y).fillStyle(shell.hostile ? 0xff9177 : 0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
       if (performance.now() < hitUntil) this.battle.lineStyle(3,0xffffff).strokeCircle(world.x,world.y,16);
       if (performance.now() < hurtUntil) this.battle.lineStyle(4,0xff9177).strokeCircle(rendered.x,rendered.y,38);
       if (combat.incomingFire) this.battle.lineStyle(2,0xff9177).strokeCircle(420,272,16);
@@ -247,7 +256,7 @@ class Playground extends Phaser.Scene {
       for(const sector of readout.damageSectors){const angle=sector*Math.PI/4,dx=Math.cos(angle),dy=Math.sin(angle),x=480+dx*420,y=270+dy*215;
         fx.fillStyle(0xff947d).fillTriangle(x-dx*13,y-dy*13,x+dx*9-dy*10,y+dy*9+dx*10,x+dx*9+dy*10,y+dy*9-dx*10);
       }
-      this.help.setText(`${[settings.bindings.up,settings.bindings.left,settings.bindings.down,settings.bindings.right].map(keyLabel).join('/')} MOVE · ${keyLabel(settings.bindings.fire)} FIRE · RMB/${keyLabel(settings.bindings.cancel)} CANCEL · ${keyLabel(settings.bindings.quiet)} QUIET · ${keyLabel(settings.bindings.pause)} SETTINGS`);
+      this.help.setText(`${[settings.bindings.up,settings.bindings.left,settings.bindings.down,settings.bindings.right].map(keyLabel).join('/')} MOVE · ${keyLabel(settings.bindings.fire)} FIRE · RMB/${keyLabel(settings.bindings.cancel)} CANCEL · ${keyLabel(settings.bindings.quiet)} QUIET · ${keyLabel(settings.bindings.pause)} SETTINGS · ${keyLabel(settings.bindings.scoreboard)} SCORES`);
       return;
     }
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
@@ -259,10 +268,8 @@ window.addEventListener('focus', () => gameScene?.reactivate());
 document.addEventListener('visibilitychange', () => { lastWorkerAt=performance.now();if (document.hidden) { gameScene?.neutralize(); if(!rangeMode)pause(true); } else gameScene?.reactivate(); });
 const serverStatus = document.querySelector('#server-status')!;
 const endpoint = import.meta.env.VITE_SERVER_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`;
-if(!rangeMode)serverStatus.textContent='Solo runs entirely on this device.';
-else new Client(endpoint).joinOrCreate('foundation', currentHandshake()).then(room => {
-  room.onMessage('welcome', (message: unknown) => { serverStatus.textContent = versionsMatch(message) ? 'Development server connected · versions match' : 'Server version mismatch'; if (!versionsMatch(message)) void room.leave(); });
-  room.onLeave(() => { serverStatus.textContent = 'Development server disconnected. Reload to reconnect.'; });
-}).catch(() => { serverStatus.textContent = 'Development server unavailable or incompatible. Start it and reload.'; });
-
+if(!rangeMode||!import.meta.env.DEV||!new URLSearchParams(location.search).has('diagnostics'))serverStatus.textContent='Solo runs entirely on this device.';
+else void import('colyseus.js').then(({Client})=>new Client(endpoint).joinOrCreate('foundation',currentHandshake())).then(room=>{
+ room.onMessage('welcome',(message:unknown)=>{serverStatus.textContent=versionsMatch(message)?'Development server connected · versions match':'Server version mismatch';if(!versionsMatch(message))void room.leave();});room.onLeave(()=>{serverStatus.textContent='Development server disconnected. Reload to reconnect.';});
+}).catch(()=>{serverStatus.textContent='Development server unavailable or incompatible. Start it and reload.';});
 setupOffline();

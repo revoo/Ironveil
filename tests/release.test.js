@@ -1,0 +1,7 @@
+import {expect,it} from 'vitest';import {createSoloServer} from '../tools/serve-solo.mjs';import {mkdtemp,writeFile,mkdir,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
+it('serves a standalone offline shell with correct MIME and version-safe cache headers',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'ironveil-release-'));await mkdir(join(root,'assets'));await writeFile(join(root,'index.html'),'<h1>Ironveil</h1>');await writeFile(join(root,'sw.js'),'/* worker */');await writeFile(join(root,'assets','app-abc123.js'),'export{}');
+ const server=createSoloServer(root);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url='http://127.0.0.1:'+server.address().port;
+ try{const home=await fetch(url+'/');expect(home.status).toBe(200);expect(await home.text()).toContain('Ironveil');expect(home.headers.get('cache-control')).toContain('no-cache');const sw=await fetch(url+'/sw.js');expect(sw.headers.get('content-type')).toContain('javascript');expect(sw.headers.get('cache-control')).toContain('no-cache');const asset=await fetch(url+'/assets/app-abc123.js');expect(asset.headers.get('cache-control')).toContain('immutable');expect((await fetch(url+'/../package.json')).status).toBe(404);expect((await fetch(url+'/%2e%2e%2fpackage.json')).status).toBe(404);expect((await fetch(url+'/missing')).status).toBe(404);expect((await fetch(url+'/',{method:'POST'})).status).toBe(405);}
+ finally{await new Promise(resolve=>server.close(resolve));await rm(root,{recursive:true,force:true});}
+});

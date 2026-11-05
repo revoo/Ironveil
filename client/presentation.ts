@@ -21,3 +21,10 @@ export class PoseBuffer {
     return { x: lerp(previous.pose.x, latest.pose.x), y: lerp(previous.pose.y, latest.pose.y), hull: angle(previous.pose.hull, latest.pose.hull), turret: angle(previous.pose.turret, latest.pose.turret) };
   }
 }
+
+export class EventInbox<T extends {id:number}> {
+ private highest=0;private queue:T[]=[];
+ push(events:T[]):void{for(const e of events)if(e.id>this.highest){this.highest=e.id;this.queue.push({...e});}this.queue=this.queue.slice(-64);}
+ drain():T[]{return this.queue.splice(0);}
+ clear():void{this.queue=[];}
+}

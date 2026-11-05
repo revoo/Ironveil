@@ -1,6 +1,6 @@
 {
   "name": "ironveil",
-  "version": "0.0.1",
+  "version": "1.0.0-solo",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,7 +16,10 @@
     "test:browser": "playwright test",
     "dev:all": "concurrently -k -n server,client 'npm:dev:server' 'npm:dev:client'",
     "diagnostics:solo": "node --import tsx tools/solo-diagnostics.ts",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "serve:solo": "node tools/serve-solo.mjs",
+    "package:solo": "npm run build && node tools/package-solo.mjs",
+    "soak:solo": "node --import tsx tools/soak-solo.ts"
   },
   "dependencies": {
     "@colyseus/core": "0.16.24",

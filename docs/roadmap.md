@@ -38,6 +38,11 @@ The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping
 The [S5 handoff](s5.md) records a bounded presentation pass: textured terrain, brush foliage, dressed existing cover and separate tank hull/turret sprites with team symbols. Preserve the accepted solo deathmatch, movement and perception rules. This is presentation work toward the original M7 goals, not final-art or Gate C completion. The owner accepted this pass for progression on November 5 (“i like it”). Multiplayer remains deferred.
 
 
-## Current milestone: S6 — confirmed combat feedback and compact HUD (implemented; awaiting playtest)
+## S6 — confirmed combat feedback and compact HUD (implemented)
 
-The [S6 handoff](s6.md) records personal authorized hit/destruction confirmation, coarse incoming trajectory cues, a compact health/weapon/smoke HUD and a concealed-destruction effect authorization fix. Preserve the accepted gameplay baseline. Await owner feedback on combat/stealth readability before expanding scope. Multiplayer remains deferred.
+The [S6 handoff](s6.md) records personal authorized hit/destruction confirmation, coarse incoming trajectory cues, a compact health/weapon/smoke HUD and a concealed-destruction effect authorization fix. Preserve the accepted gameplay baseline. The owner subsequently authorized completing the remaining solo specification before the next playtest. Multiplayer remains deferred.
+
+
+## Solo V1 completion — final playtest pending
+
+On November 5 the owner explicitly directed completion of the entire remaining solo spec before their next playtest, keeping multiplayer deferred. This supersedes intermediate handoff gates. The [solo V1 audit](solo-v1.md) maps requirements to implementation, approved overrides, test evidence, standalone packaging and remaining human/compatibility evaluation. The implementation adds the remaining scoreboard/fullscreen/music/recovery and delivery details, hardens Worker scheduling and preserves approved gameplay. No further automatic content expansion is authorized; the completed build awaits the owner's final playtest.

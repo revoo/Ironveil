@@ -3,7 +3,7 @@ import { Client } from 'colyseus.js';
 import { currentHandshake } from '../shared/protocol';
 
 test('browser starts the shared worker and connects to the server', async ({ page }) => {
-  await page.goto('/?range=1');
+  await page.goto('/?range=1&diagnostics=1');
   await expect(page.locator('#worker-status')).toContainText('tick 30 (1.00 s)');
   await expect(page.locator('#server-status')).toContainText('connected · versions match');
   await expect(page.locator('canvas')).toBeVisible();

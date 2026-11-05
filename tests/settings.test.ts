@@ -15,3 +15,9 @@ it('rejects conflicting bindings rather than leaving a movement key firing the c
 });
 
 it('does not let the alternate Shift key shadow another action while quiet uses both Shift keys',()=>{const s=parseSettings(JSON.stringify({bindings:{fire:'ShiftRight'}}));expect(s.bindings).toEqual(defaultSettings().bindings);});
+
+it('supports independent bounded music volume and a remappable held scoreboard',()=>{
+ expect(parseSettings(JSON.stringify({musicVolume:2})).musicVolume).toBe(1);expect(parseSettings(JSON.stringify({musicVolume:-2})).musicVolume).toBe(0);
+ const s=defaultSettings();expect(s.bindings.scoreboard).toBe('Tab');const c=new Controls(s.bindings);expect(c.down('Tab',false)).toEqual(['scoreboard']);expect(c.up('Tab')).toEqual(['scoreboard-close']);
+ expect(parseSettings(JSON.stringify({bindings:{scoreboard:'KeyB'}})).bindings.scoreboard).toBe('KeyB');
+});

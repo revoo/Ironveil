@@ -1,3 +1,4 @@
+import {FixedClock} from '../../shared/sim/clock';
 import {configureLesson} from '../../shared/sim/tutorial';
 import {relaySmallMap} from '../../shared/content/relay-yard';
 import { SoloMatch } from '../../shared/sim/match';
@@ -36,7 +37,17 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   } else if (request?.type === 'start') {
     if (!started && request.mode !== 'range') {match = new SoloMatch(relaySmallMap,1,['easy','normal','hard'].includes(request.difficulty??'')?request.difficulty:'normal');tutorial=request.mode==='tutorial';if(tutorial)configureLesson(match,0);if(rangePaused)match.setPaused(true);}
     // The host adapter schedules ticks; all outcomes live in shared simulation.
-    if (!started) { started = true; setInterval(() => { if (match) { if (performance.now()-freshAt>500) { input=neutralInput();pendingSmoke=false;inbox.clear();match.neutralize(); } if (!match.paused) match.step(input,inbox.drain(),pendingSmoke); else inbox.clear(); pendingSmoke=false;self.postMessage({type:'match',observation:match.view(0),tutorialStep:tutorial?lessonIndex:undefined} satisfies WorkerResponse);return; } if(rangePaused){self.postMessage({type:'state',tick:sim.tick,tank:{...tank},combat:combat.view()} satisfies WorkerResponse);return;} if (performance.now() - freshAt > 500) { input = neutralInput(); pendingSmoke=false;inbox.clear(); combat.cancel(); } const oldTank = { x:tank.x, y:tank.y }; if (combat.hp > 0) driveTank(tank, input, trainingMap, combat.mobility); else tank.speed = 0; combat.step(tank, trainingMap, inbox.drain(), oldTank); inbox.clear(); sim.step(); self.postMessage({ type: 'state', tick: sim.tick, tank: { ...tank }, combat: combat.view() } satisfies WorkerResponse); }, 1000 / TUNING.tickRate); }
+    if (!started) {
+      started=true;const clock=new FixedClock(performance.now());
+      setInterval(()=>{const paused=match?.paused??rangePaused,steps=clock.advance(performance.now(),paused);if(paused)tickWorld();else for(let i=0;i<steps;i++)tickWorld();},1000/TUNING.tickRate);
+    }
   } else self.postMessage({ type: 'error', message: 'Invalid worker request' } satisfies WorkerResponse);
 };
 let started = false;
+
+function tickWorld():void{
+ if(performance.now()-freshAt>500){input=neutralInput();pendingSmoke=false;inbox.clear();combat.cancel();match?.neutralize();}
+ if(match){if(!match.paused)match.step(input,inbox.drain(),pendingSmoke);else inbox.clear();pendingSmoke=false;self.postMessage({type:'match',observation:match.view(0),tutorialStep:tutorial?lessonIndex:undefined} satisfies WorkerResponse);return;}
+ if(!rangePaused){const oldTank={x:tank.x,y:tank.y};if(combat.hp>0)driveTank(tank,input,trainingMap,combat.mobility);else tank.speed=0;combat.step(tank,trainingMap,inbox.drain(),oldTank);inbox.clear();sim.step();}
+ self.postMessage({type:'state',tick:sim.tick,tank:{...tank},combat:combat.view()} satisfies WorkerResponse);
+}

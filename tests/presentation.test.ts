@@ -20,3 +20,8 @@ it('ignores duplicate and older snapshots', () => {
 });
 
 it('snaps teleports instead of drawing through the map',()=>{const b=new PoseBuffer();b.push(1,pose(0),0);b.push(2,pose(1000),34);expect(b.sample(40)?.x).toBe(1000);});
+
+it('preserves confirmed transient events across catch-up snapshots, deduplicates and bounds backlog',async()=>{
+ const {EventInbox}=await import('../client/presentation');const q=new EventInbox<{id:number}>();q.push([{id:1}]);q.push([]);q.push([{id:1},{id:2}]);expect(q.drain()).toEqual([{id:1},{id:2}]);expect(q.drain()).toEqual([]);
+ q.push(Array.from({length:100},(_,i)=>({id:i+3})));expect(q.drain()).toHaveLength(64);q.push([{id:103}]);q.clear();expect(q.drain()).toEqual([]);q.push([{id:103}]);expect(q.drain()).toEqual([]);
+});

@@ -7,3 +7,5 @@ dialog{color:#edf4df;background:#15231c;border:1px solid #8a9d7d;border-radius:8
 body.training #mode-label,body.training #match-status{display:none}body.training h1{font-size:1.4rem}body.training #game{width:min(100%,calc((100vh - 260px)*16/9));margin:auto}body.training #tutorial-panel{font-size:.9rem;padding:.5rem}body.training #tutorial-panel p{margin:.4rem 0}body.training main{margin:.6rem auto}
 
 #combat-feedback{min-height:1.2em;margin:.2rem 0 .5rem;color:#ffdda5;font-weight:600}body.training #combat-feedback{display:none}
+
+#scoreboard{white-space:pre-line;border:1px solid #a5b88d;background:#1d3024;padding:.8rem;margin:.4rem 0}#game:fullscreen{width:100vw;height:100vh;aspect-ratio:auto;border:0;background:#101713}
