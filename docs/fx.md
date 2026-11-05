@@ -30,3 +30,11 @@ Local regression, performance inspection, CI and standalone release results are 
 The full local run passes 153 unit tests and all 38 Chromium browser tests; a subsequent focused run passes the ninth new FX/lighting case, bringing the unit coverage to 154 tests. Strict TypeScript, production build and map/route validation pass. The existing Phaser bundle-size warning remains.
 
 Production screenshots were inspected for actual charged-shot destruction and deployed smoke. An isolated Chromium run at device scale factor 2 measured 599 frames during real movement, deployed smoke and repeated charged shots: p50 16.7 ms, p95 16.8 ms, p99 33.4 ms, up to 105 rendered particles and three light sources, with no page errors. This indicates mostly 60 Hz pacing on the reference host, with occasional missed frames; it is not broad hardware certification or a worst-case stress benchmark. An earlier sample running alongside the browser suite was intentionally excluded from that result.
+
+Chromium/WebKit production engine checks pass five scenarios; WebKit's offline-emulation case retains its documented upstream skip. All three offline acceptance checks pass against the refreshed standalone package, including full process restart with networking disabled and missing Worker cache repair.
+
+The standalone archive contains version `1.2.0-solo` and source checkpoint `705c403156851a0a93bb0a2ccfa505c01fbeacda`. Current `release/ironveil-solo-v1.tar.gz` SHA-256: `75ce79d80087979178dc0654bd92d11aa35d14810eea4291157344ac4dbe76c8`; sidecar verification passes. This supersedes the historical archive checksums in the earlier AI and recoil reports. The updated build is served at http://127.0.0.1:4180/. Close all previous Ironveil tabs and reopen to activate the new offline cache.
+
+## CI follow-up
+
+The first manual checkpoint passed all 154 unit tests, map validation and build, plus 37 of 38 browser scenarios. The existing right-click cancellation browser test missed the short eight-tick recovery state on the slower CI renderer and observed the subsequent ready state. The test now latches the Worker-confirmed transition with a MutationObserver before sending right-click, then verifies release returns to ready with no shot or hit. No game rules or FX implementation changed for this correction. Final repeat verification and CI result follow below.

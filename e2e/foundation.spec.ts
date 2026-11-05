@@ -57,10 +57,18 @@ test('Space holds charge, right click cancels, and left click does not fire', as
   await expect(status).toHaveAttribute('data-weapon', 'ready');
   await page.keyboard.down('Space');
   await expect(status).toHaveAttribute('data-weapon', 'charging');
+  // Latch the short Worker-confirmed transition: a slow CI frame can skip its visual window.
+  await status.evaluate(element=>{
+    const status=element as HTMLElement;status.dataset.observedCancel='false';
+    const observer=new MutationObserver(()=>{if(status.dataset.weapon==='cancel recovery'){status.dataset.observedCancel='true';observer.disconnect();}});
+    observer.observe(status,{attributes:true,attributeFilter:['data-weapon']});
+  });
   await page.locator('canvas').click({ button: 'right' });
-  await expect(status).toHaveAttribute('data-weapon', 'cancel recovery');
+  await expect(status).toHaveAttribute('data-observed-cancel', 'true');
   await page.keyboard.up('Space');
   await expect(status).toHaveAttribute('data-weapon', 'ready');
+  await expect(status).toHaveAttribute('data-recoil-kicks', '0');
+  await expect(status).toHaveAttribute('data-hits', '0');
 });
 
 test('range reset clears damage and toggled incoming training fire', async ({ page }) => {
