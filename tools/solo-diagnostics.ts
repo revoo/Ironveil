@@ -18,7 +18,7 @@ for (let seed = 1; seed <= count; seed++) {
                 deaths++;
             alive[i] = a.hp > 0;
             const distance = Math.hypot(a.x - prior[i].x, a.y - prior[i].y);
-            idle[i] = i > 0 && a.hp > 0 && distance < 0.1 && Math.hypot(a.x - match.zone.x, a.y - match.zone.y) > 100 ? idle[i] + 1 : 0;
+            idle[i] = i > 0 && a.hp > 0 && distance < 0.1 ? idle[i] + 1 : 0;
             maxIdle = Math.max(maxIdle, idle[i]);
             prior[i] = { x: a.x, y: a.y };
             if (!Number.isFinite(a.x) || !Number.isFinite(a.y))

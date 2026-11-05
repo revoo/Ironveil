@@ -10,7 +10,7 @@ export const LESSONS = [
     ['Use brush', 'Drive down into the brush patch and stop. Brush hides distant occupants; close enemies and firing can reveal you.'],
     ['Approach quietly', 'Hold your quiet key and move at least 20 pixels. Quiet movement starts only after actual speed falls to the quiet cap; it is not invisibility.'],
     ['Smoke escape', 'Deploy smoke, then drive more than 110 pixels from the deployment point. Smoke blocks sight for both teams, but shells pass through.'],
-    ['Contest the relay', 'Move into the ring and stay until your team earns a point. Both teams inside means no scoring; kills alone give no points.'],
+    ['Earn a team kill', 'Finish the damaged orange tank. Each enemy destroyed earns one team kill. First to 15 kills wins; at seven minutes the leading team wins. Ties get one minute of sudden death.'],
 ] as const;
 export class TutorialProgress {
     index = 0;

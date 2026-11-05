@@ -16,3 +16,10 @@ it('requires evidence and real state facts for the remaining stealth/objective l
 });
 
 it('tap training waits for confirmed target damage instead of advancing on a miss',()=>{const p=new TutorialProgress();p.index=2;const o=new SoloMatch(trainingMap).view(0);o.events=[{id:1,kind:'shot',x:200,y:200,charge:0}];expect(p.observe(o)).toBe(false);o.enemies=[{...o.allies[0],id:2,team:1,hp:78}];o.events=[];expect(p.observe(o)).toBe(true);});
+
+it('final training exercise earns a kill through actual combat',async()=>{
+ const {configureLesson}=await import('../shared/sim/tutorial');const {relaySmallMap}=await import('../shared/content/relay-yard');
+ const m=new SoloMatch(relaySmallMap);configureLesson(m,8);const p=new TutorialProgress();p.index=8;
+ expect(p.observe(m.view(0))).toBe(false);m.step({x:0,y:0,aim:0,silent:false},['press','release']);
+ for(let i=0;i<30;i++)m.step();expect(m.scores).toEqual([1,0]);expect(p.observe(m.view(0))).toBe(true);
+});

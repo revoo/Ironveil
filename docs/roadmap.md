@@ -18,7 +18,7 @@ The [S2 handoff](s2.md) records implementation and local verification. Scope: th
 
 Tune controls, cues, map routes and bot fallibility based on encounters. Do not add content to compensate for a weak loop. Forest-depth occlusion remains out of scope; brush concealment and map dressing are the specified vegetation mechanics.
 
-## Current milestone: S3 — solo usability and delivery (implemented; awaiting playtest)
+## S3 — solo usability and delivery (accepted for progression)
 
 The [S3 handoff](s3.md) records difficulty presets, guided training, controls/settings/accessibility and verified offline caching. The owner authorized this delivery work while deferring mode refinement. These remain milestone-level handoffs with explicit human feedback.
 
@@ -28,6 +28,6 @@ Reassess online scope with the owner after the solo loop is enjoyable. The exist
 
 TDD, conservative manual CI, milestone commits/pushes, and milestone-only playtest handoffs remain active project instructions.
 
-## Preferred next experiment: team deathmatch
+## Current milestone: S4 — team deathmatch experiment (implemented; awaiting playtest)
 
-The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping as a weak mode loop and expressed a preference for team deathmatch. Keep that finding explicit: systems approval is not Relay fun validation. S3 leaves the mode unchanged while completing usability/offline delivery. After its handoff, prioritize a bounded TDM experiment over polishing the Relay loop or adding unrelated content, when the owner directs the next gameplay work.
+The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping as a weak mode loop and expressed a preference for team deathmatch. Keep that finding explicit: systems approval is not Relay fun validation. S3 leaves the mode unchanged while completing usability/offline delivery. The owner accepted S3 and authorized the next milestone on November 5. The [S4 handoff](s4.md) records the implemented default team deathmatch replacement: 15 team kills or seven minutes, bounded overtime, search/engage/reposition bots and updated training. Await owner playtest before expanding scope.

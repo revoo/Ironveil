@@ -2,7 +2,7 @@ import { it, expect } from 'vitest';
 import { botIntent, newBotState } from '../shared/sim/bot';
 import { SoloMatch } from '../shared/sim/match';
 import { trainingMap } from '../shared/content';
-it('navigates toward the objective without hidden enemy inputs and is repeatable', () => {
+it('navigates between search areas without hidden enemy inputs and is repeatable', () => {
     const m = new SoloMatch(trainingMap), a = newBotState(12), b = newBotState(12), obs = m.view(0);
     expect(obs.enemies).toHaveLength(0);
     botIntent(obs, 1, trainingMap, a);
@@ -50,7 +50,21 @@ it('uses smoke to reposition at low health and investigates only historical evid
  botIntent(observation,1,trainingMap,state);expect(state.mode).toBe('investigate');expect(state.targetId).toBeUndefined();
 });
 
-it('falls back to the relay center when its formation offset is obstructed',async()=>{
+it('finds a search route from the obstructed depot approach',async()=>{
  const {relaySmallMap}=await import('../shared/content/relay-yard');const m=new SoloMatch(relaySmallMap);Object.assign(m.actors[3],{x:790,y:400});
  const state=newBotState(1);botIntent(m.view(1),3,relaySmallMap,state);expect(state.path.length).toBeGreaterThan(0);
+});
+
+it('moves to another search area after arriving instead of camping a landmark',()=>{
+ const m=new SoloMatch(trainingMap);const s=newBotState(12);let o=m.view(0);botIntent(o,1,trainingMap,s);
+ const first={...s.goal!};Object.assign(m.actors[1],first);m.tick=5;o=m.view(0);o.enemies=[];o.sightings=[];o.tracks=[];o.sounds=[];botIntent(o,1,trainingMap,s);
+ expect(Math.hypot(s.goal!.x-first.x,s.goal!.y-first.y)).toBeGreaterThan(80);expect(Math.hypot(s.drive.x,s.drive.y)).toBeGreaterThan(0);
+});
+
+it('resumes searching after reaching historical evidence and does not revisit the same stale contact',()=>{
+ const m=new SoloMatch(trainingMap);Object.assign(m.actors[1],{x:300,y:600});const o=m.view(0);o.enemies=[];o.sightings=[{id:2,x:400,y:600,expires:90}];
+ const s=newBotState(8);botIntent(o,1,trainingMap,s);expect(s.mode).toBe('investigate');
+ Object.assign(o.allies.find(a=>a.id===1)!,{x:400,y:600});o.tick=5;botIntent(o,1,trainingMap,s);
+ expect(s.mode).toBe('navigate');expect(Math.hypot(s.drive.x,s.drive.y)).toBeGreaterThan(0);
+ o.tick=10;botIntent(o,1,trainingMap,s);expect(s.mode).toBe('navigate');
 });

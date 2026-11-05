@@ -11,19 +11,10 @@ it('starts a local 2v2 and freezes the entire world while paused', () => {
         m.step();
     expect(JSON.stringify(m)).toBe(before);
 });
-it('scores once per uncontested second, not once per occupant, and protection ends in the zone', () => {
-    const m = new SoloMatch(trainingMap);
-    m.botsEnabled = false;
-    m.actors.filter(a => a.team === 0).forEach(a => { a.x = m.zone.x; a.y = m.zone.y; });
-    for (let i = 0; i < 30; i++)
-        m.step();
-    expect(m.scores).toEqual([1, 0]);
-    expect(m.actors[0].protection).toBe(0);
-    m.actors[2].x = m.zone.x;
-    m.actors[2].y = m.zone.y;
-    for (let i = 0; i < 30; i++)
-        m.step();
-    expect(m.scores).toEqual([1, 0]);
+it('does not award points for occupying a landmark and preserves spawn protection there', () => {
+ const m=new SoloMatch(trainingMap);m.botsEnabled=false;
+ Object.assign(m.actors[0],{x:800,y:448});for(let i=0;i<30;i++)m.step();
+ expect(m.scores).toEqual([0,0]);expect(m.actors[0].protection).toBe(30);
 });
 it('filters hidden enemies and excludes dead allies from vision', () => {
     const m = new SoloMatch(trainingMap);
@@ -53,7 +44,7 @@ it('respawns after five seconds and restarts with a clean clock and scores', () 
 it('declares a winner and resolves tied time expiry through sudden death', () => {
     const m = new SoloMatch(trainingMap);
     m.botsEnabled = false;
-    m.scores = [180, 0];
+    m.scores = [15, 0];
     m.step();
     expect(m.result).toBe(0);
     m.restart();
@@ -62,10 +53,8 @@ it('declares a winner and resolves tied time expiry through sudden death', () =>
     m.step();
     expect(m.sudden).toBe(true);
     expect(m.result).toBeNull();
-    m.actors[0].x = m.zone.x;
-    m.actors[0].y = m.zone.y;
-    for (let i = 0; i < 30; i++)
-        m.step();
+    Object.assign(m.actors[2],{x:180,y:100,hp:22,protection:0});
+    m.shells=[{id:1,team:0,x:140,y:100,angle:0,speed:3000,damage:22,remaining:900,charge:0}];m.step();
     expect(m.result).toBe(0);
 });
 it('allied shells pass through teammates and hit the nearest unprotected enemy', () => {
@@ -81,7 +70,7 @@ it('allied shells pass through teammates and hit the nearest unprotected enemy',
     expect(m.actors[1].hp).toBe(100);
     expect(m.actors[2].hp).toBe(45);
 });
-it('dead occupants cannot score and their fired shells can trade on the same tick', () => {
+it('counts simultaneous lethal trades once for each team', () => {
     const m = new SoloMatch(trainingMap);
     m.botsEnabled = false;
     m.tick = 29;
@@ -92,7 +81,7 @@ it('dead occupants cannot score and their fired shells can trade on the same tic
     m.step();
     expect(a.hp).toBe(0);
     expect(b.hp).toBe(0);
-    expect(m.scores).toEqual([0, 0]);
+    expect(m.scores).toEqual([1, 1]);
 });
 it('spawn protection ends on firing and tied sudden death can end as a draw', () => {
     const m = new SoloMatch(trainingMap);
@@ -114,11 +103,19 @@ it('keeps authority isolated from mutation of an observation and never sends hid
     m.events = [{ id: 1, kind: 'shot', x: 1440, y: 688, charge: 1 }];
     expect(m.view(0).events).toEqual([]);
 });
-it('does not advance a finished match', () => { const m = new SoloMatch(trainingMap); m.botsEnabled = false; m.scores = [180, 0]; m.step(); const tick = m.tick; m.step(); expect(m.tick).toBe(tick); });
+it('does not advance a finished match', () => { const m = new SoloMatch(trainingMap); m.botsEnabled = false; m.scores = [15, 0]; m.step(); const tick = m.tick; m.step(); expect(m.tick).toBe(tick); });
 
-it('entering a relay ends protection before projectile damage is resolved',()=>{
+it('landmarks do not end spawn protection before projectile resolution',()=>{
  const m=new SoloMatch(trainingMap);m.botsEnabled=false;Object.assign(m.actors[0],{x:800,y:448,protection:60});
- m.shells=[{id:1,team:1,x:750,y:448,angle:0,speed:3000,damage:22,remaining:900,charge:0}];m.step();expect(m.actors[0].hp).toBe(78);
+ m.shells=[{id:1,team:1,x:750,y:448,angle:0,speed:3000,damage:22,remaining:900,charge:0}];m.step();expect(m.actors[0].hp).toBe(100);
 });
 
 it('respawn clears momentum from the previous life',()=>{const m=new SoloMatch(trainingMap);m.botsEnabled=false;Object.assign(m.actors[0],{hp:0,respawn:1,vx:180,vy:100});m.step();expect(m.actors[0].vx).toBe(0);expect(m.actors[0].vy).toBe(0);expect(m.actors[0].speed).toBe(0);});
+
+it('resolves simultaneous target kills without actor-order bias and gives a full overtime minute',()=>{
+ const m=new SoloMatch(trainingMap);m.botsEnabled=false;m.scores=[14,14];
+ Object.assign(m.actors[0],{x:100,y:100,hp:22,protection:0});Object.assign(m.actors[2],{x:300,y:100,hp:22,protection:0});
+ m.shells=[{id:1,team:1,x:60,y:100,angle:0,speed:3000,damage:55,remaining:900,charge:1},{id:2,team:0,x:260,y:100,angle:0,speed:3000,damage:55,remaining:900,charge:1},{id:3,team:0,x:260,y:100,angle:0,speed:3000,damage:55,remaining:900,charge:1}];
+ m.step();expect(m.scores).toEqual([15,15]);expect(m.result).toBeNull();expect(m.sudden).toBe(true);expect(m.view(0).secondsLeft).toBe(60);
+ for(let i=0;i<1800;i++)m.step();expect(m.result).toBe('draw');
+});

@@ -44,15 +44,8 @@ export interface Observation {
     paused: boolean;
     allies: ActorView[];
     enemies: ActorView[];
-    zone: {
-        x: number;
-        y: number;
-    };
-    nextZone: {
-        x: number;
-        y: number;
-    };
-    rotationIn: number;
+    searchAreas: {x:number;y:number}[];
+    killTarget: number;
     scores: number[];
     secondsLeft: number;
     sudden: boolean;
@@ -137,6 +130,8 @@ export class SoloMatch {
     botsEnabled = true;
     result: Team | 'draw' | null = null;
     sudden = false;
+    private suddenEnd = 14400;
+    readonly killTarget = 15;
     paused = false;
     shells: MatchShell[] = [];
     events: CombatEvent[] = [];
@@ -146,11 +141,7 @@ export class SoloMatch {
     constructor(readonly map: GameMap, readonly seed = 1,public difficulty:Difficulty='normal') { this.restart(); }
     get sites() { return this.map.sites ?? SOLO_LAYOUT.sites; }
     get spawnPoints() { return this.map.spawns ?? SOLO_LAYOUT.spawns; }
-    get zone(): {
-        x: number;
-        y: number;
-    } { return this.sites[Math.floor(this.tick / 1800) % 3]; }
-    restart(): void { this.tick = 0; this.scores = [0, 0]; this.result = null; this.sudden = false; this.paused = false; this.shells = []; this.events = []; this.smokes = []; this.tracks = []; this.rawSounds = []; this.trackMemory = [new Map(), new Map()]; this.sightings = [new Map(), new Map()]; this.ground = [[], []]; this.groundTick = [-10, -10]; this.groundDirty = true; this.actors = Array.from({ length: 4 }, (_, id) => { const team = (id < 2 ? 0 : 1) as Team; return { id, team, ...this.spawnPoints[team][id % this.spawnPoints[team].length], hp: 100, hull: team === 0 ? 0 : Math.PI, turret: team === 0 ? 0 : Math.PI, speed: 0, respawn: 0, protection: 60, smokeReady: 0, revealUntil: 0, silent: false, trackDistance: 0, lastTrack: -100, cannon: new CombatSandbox() }; }); this.botStates = this.actors.map(a => newBotState(a.id + 1 + this.seed * 100)); this.updateEvidence(); }
+    restart(): void { this.tick = 0; this.scores = [0, 0]; this.result = null; this.sudden = false; this.suddenEnd = 14400; this.paused = false; this.shells = []; this.events = []; this.smokes = []; this.tracks = []; this.rawSounds = []; this.trackMemory = [new Map(), new Map()]; this.sightings = [new Map(), new Map()]; this.ground = [[], []]; this.groundTick = [-10, -10]; this.groundDirty = true; this.actors = Array.from({ length: 4 }, (_, id) => { const team = (id < 2 ? 0 : 1) as Team; return { id, team, ...this.spawnPoints[team][id % this.spawnPoints[team].length], hp: 100, hull: team === 0 ? 0 : Math.PI, turret: team === 0 ? 0 : Math.PI, speed: 0, respawn: 0, protection: 60, smokeReady: 0, revealUntil: 0, silent: false, trackDistance: 0, lastTrack: -100, cannon: new CombatSandbox() }; }); this.botStates = this.actors.map(a => newBotState(a.id + 1 + this.seed * 100)); this.updateEvidence(); }
     setPaused(value: boolean): void {
         this.paused = value;
         this.events = [];
@@ -181,7 +172,7 @@ export class SoloMatch {
             this.ground[team] = cells;
             this.groundTick[team] = this.tick;
         }
-        return { difficulty:this.difficulty,smokes: this.smokes.filter(s => observers.some(o => Math.hypot(o.x - s.x, o.y - s.y) <= 100 || groundSight(this.map, this.smokes.filter(c => c.id !== s.id), o, s, 540))).map(s => ({ ...s })), tracks: [...this.trackMemory[team].values()].map(t => ({ ...t, stage: Math.min(2, Math.floor((360 - (t.expires - this.tick)) / 120)) })), sightings: [...this.sightings[team].values()].filter(s => !this.actors.some(a => a.id === s.id && this.visibleTank(team, a))).map(s => ({ ...s })), sounds, ground: includeGround ? [...this.ground[team]] : [], tick: this.tick, paused: this.paused, allies: allies.map(a => this.actorView(a)), enemies: this.actors.filter(a => a.team !== team && a.hp > 0 && this.visibleTank(team, a)).map(a => this.actorView(a)), zone: { ...this.zone }, nextZone: { ...this.sites[(Math.floor(this.tick / 1800) + 1) % 3] }, rotationIn: (1800 - this.tick % 1800) / 30, scores: [...this.scores], secondsLeft: Math.max(0, ((this.sudden ? 14400 : 12600) - this.tick) / 30), sudden: this.sudden, result: this.result, shells: this.shells.filter(visible).map(s => ({ id: s.id, x: s.x, y: s.y, angle: s.angle, speed: s.speed, damage: s.damage, remaining: s.remaining, charge: s.charge, hostile: s.team !== team })), events: this.events.filter(visible).map(e => ({ ...e })) };
+        return { difficulty:this.difficulty,smokes: this.smokes.filter(s => observers.some(o => Math.hypot(o.x - s.x, o.y - s.y) <= 100 || groundSight(this.map, this.smokes.filter(c => c.id !== s.id), o, s, 540))).map(s => ({ ...s })), tracks: [...this.trackMemory[team].values()].map(t => ({ ...t, stage: Math.min(2, Math.floor((360 - (t.expires - this.tick)) / 120)) })), sightings: [...this.sightings[team].values()].filter(s => !this.actors.some(a => a.id === s.id && this.visibleTank(team, a))).map(s => ({ ...s })), sounds, ground: includeGround ? [...this.ground[team]] : [], tick: this.tick, paused: this.paused, allies: allies.map(a => this.actorView(a)), enemies: this.actors.filter(a => a.team !== team && a.hp > 0 && this.visibleTank(team, a)).map(a => this.actorView(a)), searchAreas: this.sites.map(p=>({x:p.x,y:p.y})), killTarget: this.killTarget, scores: [...this.scores], secondsLeft: Math.max(0, ((this.sudden ? this.suddenEnd : 12600) - this.tick) / 30), sudden: this.sudden, result: this.result, shells: this.shells.filter(visible).map(s => ({ id: s.id, x: s.x, y: s.y, angle: s.angle, speed: s.speed, damage: s.damage, remaining: s.remaining, charge: s.charge, hostile: s.team !== team })), events: this.events.filter(visible).map(e => ({ ...e })) };
     }
     private spawn(a: Actor): void {
         const enemies = this.actors.filter(e => e.team !== a.team && e.hp > 0);
@@ -239,8 +230,6 @@ export class SoloMatch {
                 this.sound(a, 'engine', 300 * (surface === 'mud' ? 1.25 : surface === 'brush' ? 0.75 : 1));
             if (this.tick % 15 === 0 && a.cannon.weapon === 'charging')
                 this.sound(a, 'charge', 350);
-            if (Math.hypot(a.x - this.zone.x, a.y - this.zone.y) <= 90)
-                a.protection = 0;
         }
         for (const a of this.actors) {
             if (a.hp <= 0)
@@ -301,6 +290,7 @@ export class SoloMatch {
             const a = this.actors[id];
             a.hp = Math.max(0, a.hp - amount);
             if (a.hp === 0) {
+                this.scores[1-a.team]++;
                 a.respawn = 150;
                 a.speed = 0;
                 a.cannon.hp = 0;
@@ -308,30 +298,16 @@ export class SoloMatch {
                 this.events.push({ id: this.nextEvent++, kind: 'destruction', x: a.x, y: a.y, charge: 0 });
             }
         }
-        const occupants = this.actors.filter(a => a.hp > 0 && Math.hypot(a.x - this.zone.x, a.y - this.zone.y) <= 90);
-        for (const a of occupants)
-            a.protection = 0;
-        let scoring: Team | undefined;
-        if (occupants.length && occupants.every(a => a.team === occupants[0].team))
-            scoring = occupants[0].team;
-        if ((this.tick + 1) % 30 === 0 && scoring !== undefined) {
-            this.scores[scoring]++;
-            if (this.sudden)
-                this.result = scoring;
-        }
+        // Resolve all damage and team scores before deciding a result, including trades.
         this.tick++;
-        if (this.scores[0] >= 180)
-            this.result = 0;
-        else if (this.scores[1] >= 180)
-            this.result = 1;
-        if (this.tick >= 12600 && !this.sudden && this.result === null) {
-            if (this.scores[0] !== this.scores[1])
-                this.result = this.scores[0] > this.scores[1] ? 0 : 1;
-            else
-                this.sudden = true;
+        const tied = this.scores[0] === this.scores[1];
+        if (this.sudden) {
+            if (!tied) this.result = this.scores[0] > this.scores[1] ? 0 : 1;
+            else if (this.tick >= this.suddenEnd) this.result = 'draw';
+        } else if (Math.max(...this.scores) >= this.killTarget || this.tick >= 12600) {
+            if (!tied) this.result = this.scores[0] > this.scores[1] ? 0 : 1;
+            else { this.sudden = true; this.suddenEnd = this.tick + 1800; }
         }
-        if (this.tick >= 14400 && this.result === null)
-            this.result = 'draw';
         this.events = this.events.slice(-64);
         this.updateEvidence();
     }

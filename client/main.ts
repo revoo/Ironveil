@@ -24,7 +24,7 @@ let soloActors: ActorView[] = [];
 let lastSoloTick = -1, targetKey = '';
 const matchStatus = document.querySelector<HTMLElement>('#match-status')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
-if(!rangeMode)document.querySelector('#mode-label')!.textContent='Relay Yard · solo 2 vs 2';
+if(!rangeMode)document.querySelector('#mode-label')!.textContent='Relay Yard · team deathmatch · solo 2 vs 2';
 if(rangeMode) { document.querySelector('#mode-label')!.after(document.querySelector('#settings')!);document.querySelector<HTMLElement>('#return-solo')!.hidden=false; document.querySelector<HTMLElement>('#match-panel')!.hidden = true; document.querySelector('#mode-label')!.textContent='Cannon laboratory · range'; }
 function pause(value:boolean):void { worker.postMessage({type:'neutralize'}); worker.postMessage({type:'pause',value}); gameScene?.clearKeys(); if(!value)document.querySelector<HTMLCanvasElement>('canvas')?.focus(); }
 pauseButton.onclick=()=>pause(!solo?.paused);
@@ -77,11 +77,11 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     matchStatus.dataset.difficulty=solo.difficulty;matchStatus.dataset.smokes=String(solo.smokes.length);matchStatus.dataset.smokeCooldown=String(me.smokeIn);matchStatus.dataset.tracks=String(solo.tracks.length);matchStatus.dataset.sightings=String(solo.sightings.length);
     matchStatus.dataset.tick=String(solo.tick); matchStatus.dataset.paused=String(solo.paused);matchStatus.dataset.allies=String(solo.allies.length);matchStatus.dataset.total='4';matchStatus.dataset.score=solo.scores.join(':');
     const result=solo.result===null?'':solo.result==='draw'?'DRAW':solo.result===0?'VICTORY':'DEFEAT';
-    matchStatus.textContent=`${result || (solo.paused?'PAUSED':'RELAY CONTROL')} · ${solo.difficulty.toUpperCase()} · Blue ${solo.scores[0]} — ${solo.scores[1]} Red · ${Math.ceil(solo.secondsLeft)}s ${solo.sudden?'SUDDEN DEATH':''} · ${solo.rotationIn<=10?'Next relay in '+Math.ceil(solo.rotationIn)+'s':''}`;
+    matchStatus.textContent=`${result || (solo.paused?'PAUSED':'TEAM DEATHMATCH')} · ${solo.difficulty.toUpperCase()} · Blue ${solo.scores[0]} — ${solo.scores[1]} Red · ${Math.ceil(solo.secondsLeft)}s ${solo.sudden?'SUDDEN DEATH':''} · First to ${solo.killTarget} kills`;
     if(tutorialMode)matchStatus.textContent=`GUIDED TRAINING · ${Math.min(tutorialProgress.index+1,LESSONS.length)}/${LESSONS.length} ${solo.paused?'· PAUSED':''}`;
     pauseButton.textContent=solo.paused?'Resume':'Pause'; pauseButton.disabled=solo.result!==null;
     document.querySelector<HTMLElement>('#results')!.hidden=solo.result===null;
-    document.querySelector('#result-title')!.textContent=result;document.querySelector('#result-summary')!.textContent=`Final score: Blue ${solo.scores[0]} — ${solo.scores[1]} Red. Kills create openings; holding the relay wins.`;
+    document.querySelector('#result-title')!.textContent=result;document.querySelector('#result-summary')!.textContent=`Final score: Blue ${solo.scores[0]} — ${solo.scores[1]} Red. Each enemy destroyed earns one team kill.`;
     m={type:'state',tick:solo.tick,tank:me,combat:{hp:me.hp,incomingFire:false,weapon:me.weapon,charge:me.charge,remainingTicks:me.remainingTicks,hits:0,shells:solo.shells,events:solo.events,targets:soloActors.map(a=>({...a,reset:a.respawn}))}};
   }
   if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start', mode:rangeMode?'range':tutorialMode?'tutorial':'solo',difficulty:settings.difficulty }); }
@@ -197,10 +197,8 @@ class Playground extends Phaser.Scene {
       const me=solo.allies[0];if(me.smokeIn>this.previousSmoke+1&&!this.sound.locked)this.sound.play('smoke',{volume:0.2});this.previousSmoke=me.smokeIn;
       if(!solo.paused&&solo.result===null&&me.hp>0&&me.speed>8&&!me.quiet&&now>this.nextEngine){this.nextEngine=now+260;if(!this.sound.locked)this.sound.play('engine',{volume:0.025});}
       if(!solo.paused&&solo.result===null&&combat?.weapon==='charging'&&now>this.nextHum){this.nextHum=now+220;if(!this.sound.locked)this.sound.play('charge',{volume:0.035+combat.charge*0.035,rate:0.8+combat.charge*0.7});}
-      this.battle.lineStyle(3,0xe3d39a).strokeCircle(solo.zone.x,solo.zone.y,90);
       const mini=this.mini;mini.clear().lineStyle(1,0x697566).strokeRect(780,16,160,96);
       for(const wall of trainingMap.walls)mini.fillStyle(0x879080).fillRect(780+wall.x/10,16+wall.y/10,wall.width/10,wall.height/10);
-      mini.lineStyle(1,0xe3d39a).strokeCircle(780+solo.zone.x/10,16+solo.zone.y/10,9);
       for(const sight of solo.sightings){const x=780+sight.x/10,y=16+sight.y/10;mini.lineStyle(1,0xc4b7a0,0.5).lineBetween(x-3,y-3,x+3,y+3).lineBetween(x+3,y-3,x-3,y+3);}
       for(const a of [...solo.allies,...solo.enemies])if(a.hp>0){mini.fillStyle(a.team===0?0x87c9e8:0xf49f89);const x=780+a.x/10,y=16+a.y/10;if(a.team===0)mini.fillCircle(x,y,a.id===0?3:2);else mini.fillTriangle(x,y-3,x-3,y+2,x+3,y+2);}
     }
@@ -222,7 +220,7 @@ class Playground extends Phaser.Scene {
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = drive.silent && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    if(solo){this.hud.setText(`MOVE ${[settings.bindings.up,settings.bindings.left,settings.bindings.down,settings.bindings.right].map(keyLabel).join('/')} · MOUSE AIM · ${keyLabel(settings.bindings.fire)} FIRE · RMB/${keyLabel(settings.bindings.cancel)} CANCEL\nHP ${combat?.hp ?? 100} ${solo.allies[0].quiet?'QUIET MOVEMENT':''} ${solo.allies[0].revealed?'FIRING REVEAL':''} ${combat?.hp===0?'RESPAWN '+((solo.allies[0].respawn)/30).toFixed(1)+'s':''} · ${keyLabel(settings.bindings.quiet)} QUIET · ${keyLabel(settings.bindings.mute)} SOUND · ${keyLabel(settings.bindings.pause)} SETTINGS\n${keyLabel(settings.bindings.smoke)} SMOKE ${solo.allies[0].smokeIn>0?(solo.allies[0].smokeIn/30).toFixed(1)+'s':'READY'} · X = LAST SEEN\n${combat?.weapon==='charging'&&combat.charge>=1?'FULL — RELEASE BEFORE VENT':combat?.weapon??'ready'} ${Math.round((combat?.charge??0)*100)}% · ${((combat?.remainingTicks??0)/30).toFixed(2)}s\nRELAY ${Math.round(Math.hypot(solo.zone.x-state.x,solo.zone.y-state.y))} px · STAND IN THE RING TO SCORE`);return;}
+    if(solo){this.hud.setText(`MOVE ${[settings.bindings.up,settings.bindings.left,settings.bindings.down,settings.bindings.right].map(keyLabel).join('/')} · MOUSE AIM · ${keyLabel(settings.bindings.fire)} FIRE · RMB/${keyLabel(settings.bindings.cancel)} CANCEL\nHP ${combat?.hp ?? 100} ${solo.allies[0].quiet?'QUIET MOVEMENT':''} ${solo.allies[0].revealed?'FIRING REVEAL':''} ${combat?.hp===0?'RESPAWN '+((solo.allies[0].respawn)/30).toFixed(1)+'s':''} · ${keyLabel(settings.bindings.quiet)} QUIET · ${keyLabel(settings.bindings.mute)} SOUND · ${keyLabel(settings.bindings.pause)} SETTINGS\n${keyLabel(settings.bindings.smoke)} SMOKE ${solo.allies[0].smokeIn>0?(solo.allies[0].smokeIn/30).toFixed(1)+'s':'READY'} · X = LAST SEEN\n${combat?.weapon==='charging'&&combat.charge>=1?'FULL — RELEASE BEFORE VENT':combat?.weapon??'ready'} ${Math.round((combat?.charge??0)*100)}% · ${((combat?.remainingTicks??0)/30).toFixed(2)}s\nTEAM DEATHMATCH · FIRST TO ${solo.killTarget} KILLS`);return;}
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }

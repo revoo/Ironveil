@@ -2,8 +2,8 @@ import type {Difficulty} from '../content/difficulty';
 import type {Observation} from '../sim/match';
 import type { CombatView, WeaponAction } from '../sim/combat';
 import type { DriveInput, Tank } from '../sim';
-export const PROTOCOL_VERSION = 4;
-export const CONTENT_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
+export const CONTENT_VERSION = 5;
 export type Handshake = { protocolVersion: number; contentVersion: number };
 export const currentHandshake = (): Handshake => ({ protocolVersion: PROTOCOL_VERSION, contentVersion: CONTENT_VERSION });
 export function versionsMatch(value: unknown): value is Handshake {

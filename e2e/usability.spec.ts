@@ -19,8 +19,8 @@ test('guided training can be completed through all nine actual exercises',async(
  await aim(20,20);await expect(lesson).toContainText('Tap fire');await aim(280,272);await page.waitForTimeout(1000);await page.keyboard.press('Space');await expect(lesson).toContainText('Charge and cancel');
  await aim(580,270);const status=page.locator('#drive-status');await expect.poll(async()=>Math.abs(Number(await status.getAttribute('data-barrel')))).toBeLessThan(.05);await page.keyboard.down('Space');await expect(status).toHaveAttribute('data-weapon','charging');await page.keyboard.press('c');await expect(status).toHaveAttribute('data-weapon','cancel recovery');await page.keyboard.up('Space');await expect(status).toHaveAttribute('data-weapon','ready');await page.keyboard.down('Space');await expect.poll(async()=>Number(await status.getAttribute('data-charge'))).toBeGreaterThanOrEqual(.8);await page.keyboard.up('Space');await expect(lesson).toContainText('Read mud evidence');
  await page.keyboard.down('d');await page.waitForTimeout(1000);await page.keyboard.up('d');await expect(lesson).toContainText('Use brush');await page.keyboard.down('s');await page.waitForTimeout(400);await page.keyboard.up('s');await expect(lesson).toContainText('Approach quietly');
- await page.keyboard.down('Shift');await page.keyboard.down('d');await page.waitForTimeout(800);await page.keyboard.up('d');await page.keyboard.up('Shift');await expect(lesson).toContainText('Smoke escape');await page.keyboard.press('q');await page.keyboard.down('d');await page.waitForTimeout(1600);await page.keyboard.up('d');await expect(lesson).toContainText('Contest the relay');
- await page.keyboard.down('w');await page.waitForTimeout(1100);await page.keyboard.up('w');await expect(lesson).toContainText('Training complete');
+ await page.keyboard.down('Shift');await page.keyboard.down('d');await page.waitForTimeout(800);await page.keyboard.up('d');await page.keyboard.up('Shift');await expect(lesson).toContainText('Smoke escape');await page.keyboard.press('q');await page.keyboard.down('d');await page.waitForTimeout(1600);await page.keyboard.up('d');await expect(lesson).toContainText('Earn a team kill');
+ await aim(580,270);await expect.poll(async()=>Math.abs(Number(await status.getAttribute('data-barrel')))).toBeLessThan(.05);await page.keyboard.press('Space');await expect(lesson).toContainText('Training complete');
 });
 
 test('a Worker failure presents a visible recovery action',async({page})=>{
@@ -37,5 +37,5 @@ test('aim remains aligned with the cursor when interface layout moves the canvas
  await page.goto('/');const canvas=page.locator('canvas');await expect(page.locator('#drive-status')).toHaveAttribute('data-weapon','ready');await page.waitForTimeout(600);
  await page.evaluate(()=>{document.querySelector<HTMLElement>('#game')!.style.marginTop='80px';});
  const box=await canvas.boundingBox();if(!box)throw new Error('No canvas');await page.mouse.move(box.x+700/960*box.width,box.y+270/540*box.height);
- await page.waitForTimeout(1200);expect(Math.abs(Number(await page.locator('#drive-status').getAttribute('data-barrel')))).toBeLessThan(.03);
+ await expect.poll(async()=>Math.abs(Number(await page.locator('#drive-status').getAttribute('data-barrel')))).toBeLessThan(.03);
 });

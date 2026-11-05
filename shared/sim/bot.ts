@@ -5,6 +5,9 @@ import type { GameMap } from '../content';
 import { neutralInput, type DriveInput } from './index';
 import { segmentBox, type WeaponAction } from './combat';
 export interface BotState {
+    searchIndex?: number;
+    searchUntil?: number;
+    visitedEvidence?: (string | number)[];
     mode?: 'navigate' | 'attack' | 'investigate' | 'reposition';
     smoke?: boolean;
     investigateUntil?: number;
@@ -72,12 +75,26 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState,
         if (self.weapon === 'charging')
             s.actions.push('cancel');
     }
-    let goal = { x: o.zone.x + (id % 2 ? -24 : 24), y: o.zone.y + (id % 2 ? 24 : -24) };
+    // Static landmarks are search waypoints, never knowledge of hidden tanks.
+    s.searchIndex ??= (s.seed + id) % o.searchAreas.length;
+    let search = o.searchAreas[s.searchIndex];
+    if (Math.hypot(self.x-search.x,self.y-search.y)<64 || (s.searchUntil ?? 0)<=o.tick) {
+        s.searchIndex = (s.searchIndex+1)%o.searchAreas.length;
+        s.searchUntil = o.tick+600;
+        search=o.searchAreas[s.searchIndex];
+    }
+    let goal = {...search};
+    if (enemy) {
+        // Approach distant contacts; orbit nearby contacts instead of parking to shoot.
+        const angle=Math.atan2(self.y-enemy.y,self.x-enemy.x);
+        const flank=(id%2?1:-1)*(Math.floor(o.tick/90)%2?0.65:0.35);
+        goal={x:enemy.x+Math.cos(angle+flank)*190,y:enemy.y+Math.sin(angle+flank)*190};
+    }
     if (enemy && self.hp <= 35 && self.smokeIn === 0) {
         s.smoke = true;
         s.repositionUntil = o.tick + 60;
         const direction = Math.atan2(self.y - enemy.y, self.x - enemy.x);
-        s.repositionGoal = { x: Math.max(48, Math.min(map.width * 32 - 48, self.x + Math.cos(direction + 0.5) * 160)), y: Math.max(48, Math.min(map.height * 32 - 48, self.y + Math.sin(direction + 0.5) * 160)) };
+        s.repositionGoal = { x: Math.max(48, Math.min(map.width * map.tileSize - 48, self.x + Math.cos(direction + 0.5) * 160)), y: Math.max(48, Math.min(map.height * map.tileSize - 48, self.y + Math.sin(direction + 0.5) * 160)) };
     }
     if (!enemy) {
         const sight = o.sightings.find(e => e.expires > o.tick && o.tick-(e.expires-90)<=skill.memoryTicks);
@@ -85,11 +102,14 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState,
         const sound = o.sounds.find(s => s.expires > o.tick);
         const evidence = sight ?? track;
         const evidenceId = evidence?.id ?? sound?.id;
-        if (evidenceId !== undefined && evidenceId !== s.evidenceId) {
+        if (evidenceId !== undefined && !(s.visitedEvidence ?? []).includes(evidenceId)) {
             s.evidenceId = evidenceId;
+            s.visitedEvidence = [...(s.visitedEvidence ?? []), evidenceId].slice(-64);
             s.investigateUntil = o.tick + skill.investigateTicks;
-            s.investigateGoal = evidence ? { x: evidence.x, y: evidence.y } : { x: Math.max(48, Math.min(map.width * 32 - 48, self.x + Math.cos(sound!.sector * Math.PI / 4) * 160)), y: Math.max(48, Math.min(map.height * 32 - 48, self.y + Math.sin(sound!.sector * Math.PI / 4) * 160)) };
+            s.investigateGoal = evidence ? { x: evidence.x, y: evidence.y } : { x: Math.max(48, Math.min(map.width * map.tileSize - 48, self.x + Math.cos(sound!.sector * Math.PI / 4) * 160)), y: Math.max(48, Math.min(map.height * map.tileSize - 48, self.y + Math.sin(sound!.sector * Math.PI / 4) * 160)) };
         }
+        if (s.investigateGoal && Math.hypot(self.x-s.investigateGoal.x,self.y-s.investigateGoal.y)<40)
+            s.investigateUntil=0;
         if ((s.investigateUntil ?? 0) > o.tick && s.investigateGoal) {
             goal = s.investigateGoal;
             s.mode = 'investigate';
@@ -101,8 +121,8 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState,
     }
     if (!s.goal || Math.hypot(goal.x - s.goal.x, goal.y - s.goal.y) > 32 || o.tick - s.planned >= 60 || s.path.length === 0) {
         s.path = findPath(map, self, goal);
-        if (!s.path.length && Math.hypot(self.x - o.zone.x, self.y - o.zone.y) > 40) {
-            goal = { ...o.zone };
+        if (!s.path.length && Math.hypot(self.x - search.x, self.y - search.y) > 40) {
+            goal = { ...search };
             s.path = findPath(map, self, goal);
             s.mode = 'navigate';
         }

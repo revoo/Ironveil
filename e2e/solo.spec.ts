@@ -1,6 +1,7 @@
 import {expect,test} from '@playwright/test';
 test('local match starts four tanks, pauses all ticks, and restarts',async({page})=>{
  await page.goto('/');const status=page.locator('#match-status');
+ await expect(status).toContainText('TEAM DEATHMATCH');await expect(status).toContainText('First to 15 kills');
  await expect(page.getByRole('button',{name:'Pause'})).toBeVisible();
  await expect(status).toHaveAttribute('data-allies','2');await expect(status).toHaveAttribute('data-total','4');
  await expect.poll(async()=>Number(await status.getAttribute('data-tick'))).toBeGreaterThan(10);
@@ -27,14 +28,14 @@ test('shared early steps remain close and both runtimes finish a match',async({p
  });
  expect(result[0]).toEqual(result[1]); // Same-runtime seeded replay must be reproducible.
  let maxDifference=0;for(let t=0;t<history.length;t++)for(let a=0;a<4;a++)for(let k=0;k<5;k++)maxDifference=Math.max(maxDifference,Math.abs(history[t][a][k]-result[0].history[t][a][k]));expect(maxDifference).toBeLessThan(1e-7);
- expect(result[0].result).not.toBeNull();expect(match.result).not.toBeNull();expect(Math.max(...result[0].scores)).toBeGreaterThanOrEqual(180);
+ expect(result[0].result).not.toBeNull();expect(match.result).not.toBeNull();expect(Math.max(...result[0].scores)).toBeGreaterThanOrEqual(15);
  // Long combat trajectories may diverge across JS runtimes after tiny transcendental rounding differences.
 
 });
 
 test('result presentation shows the final score and Play again resets it',async({page})=>{
  const {SoloMatch}=await import('../shared/sim/match');const {relaySmallMap:trainingMap}=await import('../shared/content/relay-yard');
- const match=new SoloMatch(trainingMap);const initial=match.view(0);match.botsEnabled=false;match.scores=[180,20];match.step();const final=match.view(0);
+ const match=new SoloMatch(trainingMap);const initial=match.view(0);match.botsEnabled=false;match.scores=[15,2];match.step();const final=match.view(0);
  // A controlled Worker fixture verifies the presentation contract; rules and real Worker execution are tested separately.
  await page.addInitScript(({initial,final})=>{
   class FixtureWorker {
@@ -43,7 +44,7 @@ test('result presentation shows the final score and Play again resets it',async(
   }
   window.Worker=FixtureWorker as unknown as typeof Worker;
  },{initial,final});
- await page.goto('/');await expect(page.getByRole('region',{name:'Match results'})).toBeVisible();await expect(page.getByRole('heading',{name:'VICTORY'})).toBeVisible();await expect(page.locator('#result-summary')).toContainText('180 — 20');
+ await page.goto('/');await expect(page.getByRole('region',{name:'Match results'})).toBeVisible();await expect(page.getByRole('heading',{name:'VICTORY'})).toBeVisible();await expect(page.locator('#result-summary')).toContainText('15 — 2');
  await page.getByRole('button',{name:'Play again'}).click();await expect(page.locator('#results')).toBeHidden();await expect(page.locator('#match-status')).toHaveAttribute('data-score','0:0');
 });
 
