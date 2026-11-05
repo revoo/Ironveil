@@ -5,7 +5,8 @@ export type WeaponAction = 'press' | 'release' | 'cancel';
 export type WeaponState = 'ready' | 'charging' | 'reloading' | 'cancel recovery' | 'vent recovery';
 export interface Shell { id: number; x: number; y: number; angle: number; speed: number; damage: number; remaining: number; charge: number; hostile?: boolean }
 export interface Dummy { x: number; y: number; hp: number; reset: number; vx?: number; vy?: number; patrolMin?: number; patrolMax?: number }
-export interface CombatView { hp: number; incomingFire: boolean; weapon: WeaponState; charge: number; remainingTicks: number; shells: Shell[]; targets: Dummy[]; hits: number }
+export interface CombatEvent { id:number; kind:'shot'|'impact'|'destruction'|'vent'; x:number; y:number; charge:number }
+export interface CombatView { events: CombatEvent[]; hp: number; incomingFire: boolean; weapon: WeaponState; charge: number; remainingTicks: number; shells: Shell[]; targets: Dummy[]; hits: number }
 /** Swept point against an axis-aligned box; returns normalized first impact. */
 export function segmentBox(x: number, y: number, dx: number, dy: number, box: { x: number; y: number; width: number; height: number }): number | undefined {
   let near = 0, far = 1;
@@ -25,10 +26,13 @@ export function segmentCircle(x: number, y: number, dx: number, dy: number, cx: 
   if (t >= 0 && t <= 1) return t;
 }
 export class CombatSandbox {
+  private nextEvent = 1;
+  private events: CombatEvent[] = [];
+  private emit(kind: CombatEvent['kind'], x:number, y:number, charge=0):void { if(this.events.length < 64) this.events.push({id:this.nextEvent++,kind,x,y,charge}); }
   hp = 100;
   incomingFire = false;
   private rangeTicks = 0;
-  reset(): void { const next = this.nextId; Object.assign(this, new CombatSandbox()); this.nextId = next; }
+  reset(): void { const eventId = this.nextEvent; const next = this.nextId; Object.assign(this, new CombatSandbox()); this.nextId = next; this.nextEvent = eventId; }
   weapon: WeaponState = 'ready';
   private timer = 0;
   private chargingTicks = 0;
@@ -38,15 +42,16 @@ export class CombatSandbox {
   hits = 0;
   get charge(): number { return Math.min(1, this.chargingTicks / CANNON.fullTicks); }
   get mobility(): number { return this.weapon === 'charging' ? 1 - 0.45 * this.charge : 1; }
-  view(): CombatView { return { hp: this.hp, incomingFire: this.incomingFire, weapon: this.weapon, charge: this.weapon === 'charging' ? this.charge : 0, remainingTicks: this.weapon === 'charging' ? CANNON.fullTicks + CANNON.holdTicks - this.chargingTicks : this.timer, shells: this.shells, targets: this.targets, hits: this.hits }; }
+  view(): CombatView { return { events: this.events, hp: this.hp, incomingFire: this.incomingFire, weapon: this.weapon, charge: this.weapon === 'charging' ? this.charge : 0, remainingTicks: this.weapon === 'charging' ? CANNON.fullTicks + CANNON.holdTicks - this.chargingTicks : this.timer, shells: this.shells, targets: this.targets, hits: this.hits }; }
   cancel(): void { if (this.weapon === 'charging') { this.weapon = 'cancel recovery'; this.timer = CANNON.cancelTicks; this.chargingTicks = 0; } }
   step(tank: Tank, map: GameMap, actions: WeaponAction[], oldTank: {x:number;y:number} = tank): void {
+    this.events = [];
     if (this.hp <= 0) actions = [];
     if (this.incomingFire && ++this.rangeTicks % 90 === 0) this.shells.push({id:this.nextId++,x:420,y:272,angle:Math.PI,speed:400,damage:22,remaining:900,charge:0,hostile:true});
     if (this.weapon !== 'ready' && this.weapon !== 'charging' && --this.timer <= 0) this.weapon = 'ready';
     if (this.weapon === 'charging') {
       this.chargingTicks++;
-      if (this.chargingTicks >= CANNON.fullTicks + CANNON.holdTicks) { this.weapon = 'vent recovery'; this.timer = CANNON.ventTicks; }
+      if (this.chargingTicks >= CANNON.fullTicks + CANNON.holdTicks) { this.weapon = 'vent recovery'; this.timer = CANNON.ventTicks; this.emit('vent',tank.x,tank.y); }
     }
     for (const action of actions) {
       if (action === 'cancel') this.cancel();
@@ -55,6 +60,7 @@ export class CombatSandbox {
         const charge = this.charge, dx = Math.cos(tank.turret) * 34, dy = Math.sin(tank.turret) * 34;
         // Muzzle clearance uses the entire firing segment, not just its endpoint.
         if (!map.walls.some(w => segmentBox(tank.x, tank.y, dx, dy, w) !== undefined)) this.shells.push({ id: this.nextId++, x: tank.x + dx, y: tank.y + dy, angle: tank.turret, speed: 400 + charge * 350, damage: 22 + charge * 33, remaining: CANNON.range, charge });
+        this.emit('shot',tank.x + dx,tank.y + dy,charge);
         this.weapon = 'reloading'; this.timer = CANNON.reloadTicks;
       }
     }
@@ -76,11 +82,11 @@ export class CombatSandbox {
       let earliest = Infinity; let victim: Dummy | undefined;
       for (const wall of map.walls) { const t = segmentBox(shell.x, shell.y, dx, dy, wall); if (t !== undefined && t < earliest) earliest = t; }
       for (const target of shell.hostile ? [player] : this.targets) { if (target.hp <= 0) continue; const old = target === player ? oldTank : previous.get(target)!; const t = segmentCircle(shell.x, shell.y, dx - (target.x - old.x), dy - (target.y - old.y), old.x, old.y, 20); if (t !== undefined && t < earliest) { earliest = t; victim = target; } }
-      if (earliest !== Infinity) { if (victim) { damage.set(victim, (damage.get(victim) ?? 0) + shell.damage); if (victim !== player) this.hits++; } continue; }
+      if (earliest !== Infinity) { this.emit('impact',shell.x+dx*earliest,shell.y+dy*earliest,shell.charge); if (victim) { damage.set(victim, (damage.get(victim) ?? 0) + shell.damage); if (victim !== player) this.hits++; } continue; }
       shell.x += dx; shell.y += dy; shell.remaining -= distance;
       if (shell.remaining > 0 && shell.x >= 0 && shell.y >= 0 && shell.x <= map.width * map.tileSize && shell.y <= map.height * map.tileSize) survivors.push(shell);
     }
-    for (const [target, amount] of damage) { target.hp = Math.max(0, target.hp - amount); if (target.hp === 0) target.reset = 90; }
+    for (const [target, amount] of damage) { target.hp = Math.max(0, target.hp - amount); if (target.hp === 0) { target.reset = 90; this.emit('destruction',target.x,target.y); } }
     this.hp = player.hp;
     if (this.hp <= 0) this.cancel();
     this.shells = survivors;

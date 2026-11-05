@@ -84,3 +84,15 @@ it('patrol stays inside its authored lane through repeated reversals', () => {
   const c = new CombatSandbox();
   for(let i=0;i<1800;i++) { c.step(tank,map,[]); expect(c.targets[1].x).toBeGreaterThanOrEqual(600); expect(c.targets[1].x).toBeLessThanOrEqual(900); }
 });
+
+it('publishes bounded, one-tick shot/impact/destruction events at actual impact positions', () => {
+ const c=new CombatSandbox(); c.targets=[{x:154,y:100,hp:22,reset:0}]; c.step(tank,map,['press','release']);
+ const events=c.view().events;
+ expect(events).toEqual(expect.arrayContaining([expect.objectContaining({kind:'shot',charge:0}),expect.objectContaining({kind:'impact',x:134,y:100}),expect.objectContaining({kind:'destruction',x:154,y:100})]));
+ const ids=events.map((e)=>e.id); expect(new Set(ids).size).toBe(ids.length); c.step(tank,map,[]); expect(c.view().events).toEqual([]);
+});
+it('vent recovery lasts 24 ticks and release at the threshold cannot salvage the shot', () => {
+ const c=new CombatSandbox(); c.step(tank,map,['press']); for(let i=0;i<89;i++) c.step(tank,map,[]);
+ c.step(tank,map,['release']); expect(c.weapon).toBe('vent recovery'); expect(c.shells).toEqual([]);
+ for(let i=0;i<23;i++) c.step(tank,map,[]); expect(c.weapon).toBe('vent recovery'); c.step(tank,map,['release']); expect(c.weapon).toBe('ready'); expect(c.shells).toEqual([]);
+});

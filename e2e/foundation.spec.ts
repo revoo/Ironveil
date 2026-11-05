@@ -75,3 +75,19 @@ test('range reset clears damage and toggled incoming training fire', async ({ pa
   await expect(status).toHaveAttribute('data-incoming','false');
   await expect(status).toHaveAttribute('data-x','160');
 });
+
+test('sound unlocks on interaction and mute can be toggled', async ({page}) => {
+ await page.goto('/'); const status=page.locator('#drive-status');
+ await page.locator('canvas').click();
+ await expect(status).toHaveAttribute('data-audio-ready','true');
+ await page.keyboard.press('m'); await expect(status).toHaveAttribute('data-muted','true');
+ await page.keyboard.press('m'); await expect(status).toHaveAttribute('data-muted','false');
+});
+test('losing focus while charging cancels without firing', async ({page}) => {
+ await page.goto('/'); const status=page.locator('#drive-status');
+ await expect(status).toHaveAttribute('data-weapon','ready'); await page.keyboard.down('Space');
+ await expect(status).toHaveAttribute('data-weapon','charging');
+ await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
+ await page.keyboard.up('Space'); await expect(status).toHaveAttribute('data-weapon','ready');
+ await expect(status).toHaveAttribute('data-hits','0');
+});

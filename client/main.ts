@@ -1,3 +1,5 @@
+import { audioData } from './audio';
+import type { CombatEvent } from '../shared/sim/combat';
 import { PoseBuffer } from './presentation';
 import type { CombatView } from '../shared/sim/combat';
 import Phaser from 'phaser';
@@ -16,6 +18,8 @@ let recoilUntil = 0, recoilStrength = 0, hitUntil = 0, hurtUntil = 0;
 const shellPoses = new Map<number, PoseBuffer>();
 let state: Tank | undefined;
 let combat: CombatView | undefined;
+let weaponSequence = 0;
+function weapon(action: 'press'|'release'|'cancel'):void { worker.postMessage({type:'weapon', seq:++weaponSequence, action}); }
 let gameScene: Playground | undefined;
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const m = event.data;
@@ -45,16 +49,20 @@ class Playground extends Phaser.Scene {
   private hud!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private activeInput = true;
+  private lastEffect = 0;
+  private effects: {event: CombatEvent; until:number}[] = [];
+  preload():void { for(const kind of ['tap','full','impact','destruction','vent'] as const) this.load.audio(kind,audioData(kind)); }
   constructor() { super('playground'); }
   create(): void {
     gameScene = this;
+    this.input.keyboard!.addKey('M').on('down', () => { this.sound.mute = !this.sound.mute; });
     this.input.mouse?.disableContextMenu();
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.rightButtonDown()) worker.postMessage({ type: 'weapon', action: 'cancel' }); });
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.rightButtonDown()) weapon('cancel'); });
     this.input.keyboard!.addKey('R').on('down', () => { if (this.activeInput) worker.postMessage({ type: 'reset' }); });
     this.input.keyboard!.addKey('T').on('down', () => { if (this.activeInput) worker.postMessage({ type: 'range-fire' }); });
     const fire = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    fire.on('down', () => { if (this.activeInput) worker.postMessage({ type: 'weapon', action: 'press' }); });
-    fire.on('up', () => { if (this.activeInput) worker.postMessage({ type: 'weapon', action: 'release' }); });
+    fire.on('down', () => { if (this.activeInput) weapon('press'); });
+    fire.on('up', () => { if (this.activeInput) weapon('release'); });
     const colors = { grass: 0x263a30, road: 0x696453, mud: 0x594a37, brush: 0x40593a };
     const ground = this.add.graphics();
     trainingMap.terrain.forEach((tile, i) => {
@@ -71,6 +79,7 @@ class Playground extends Phaser.Scene {
   neutralize(): void { this.activeInput = false; worker.postMessage({ type: 'neutralize' }); worker.postMessage({ type: 'input', input: { ...neutralInput(), aim: state?.turret ?? 0 } }); this.input.keyboard?.resetKeys(); }
   reactivate(): void { this.activeInput = true; }
   update(_time: number, delta: number): void {
+    driveStatus.dataset.audioReady = String(!this.sound.locked); driveStatus.dataset.muted = String(this.sound.mute);
     if (!state) return;
     const rendered = tankPoses.sample(performance.now()) ?? state;
     const pointer = this.input.activePointer;
@@ -88,7 +97,21 @@ class Playground extends Phaser.Scene {
     const leadX = Phaser.Math.Clamp(pointer.x - 480, -240, 240) / 3, leadY = Phaser.Math.Clamp(pointer.y - 270, -240, 240) / 3;
     const cam = this.cameras.main, blend = 1 - Math.exp(-Math.min(delta, 100) / 180);
     cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, rendered.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, rendered.y + leadY, blend));
+    const now = performance.now();
+    for(const event of combat?.events ?? []) {
+      if(event.id <= this.lastEffect) continue;
+      this.lastEffect = event.id;
+      if(this.effects.length >= 64) this.effects.shift();
+      this.effects.push({event,until:now+(event.kind === 'destruction' ? 450 : 220)});
+      if(!this.sound.locked) this.sound.play(event.kind === 'shot' ? (event.charge >= 0.5 ? 'full' : 'tap') : event.kind, {volume:event.kind === 'shot' ? 0.25+0.15*event.charge : 0.15});
+    }
+    this.effects = this.effects.filter(effect=>effect.until > now);
     this.battle.clear();
+    for(const effect of this.effects) {
+      const event=effect.event, fade=Math.min(1,(effect.until-now)/220);
+      const radius=event.kind === 'destruction' ? 22+(1-fade)*20 : 4+(1-fade)*(12+event.charge*10);
+      this.battle.lineStyle(event.kind === 'destruction' ? 4 : 2,event.kind === 'vent' ? 0xa2b4ac : 0xffd99b,fade).strokeCircle(event.x,event.y,radius);
+    }
     if (combat) {
       for (const [index, targetState] of combat.targets.entries()) {
         const target = { ...targetState, ...targetPoses.get(index)?.sample(performance.now()) };
@@ -104,7 +127,7 @@ class Playground extends Phaser.Scene {
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nHP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
+    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
 new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });
