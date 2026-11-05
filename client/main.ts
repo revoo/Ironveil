@@ -1,3 +1,4 @@
+import {createBattlefield,createTankTextures,TERRAIN_COLORS} from './art';
 import {Controls,readSettings,saveSettings,keyLabel,type Settings} from './settings';
 import {mountSettings} from './ui';
 import {setupOffline} from './offline';
@@ -103,8 +104,8 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 worker.onerror=failWorker;worker.onmessageerror=failWorker;
 worker.postMessage({ type: 'advance', ticks: 30 });
 class Playground extends Phaser.Scene {
-  private hull!: Phaser.GameObjects.Graphics;
-  private turret!: Phaser.GameObjects.Graphics;
+  private hull!: Phaser.GameObjects.Image;
+  private turret!: Phaser.GameObjects.Image;
   private cursor!: Phaser.GameObjects.Graphics;
   private battle!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
@@ -113,6 +114,7 @@ class Playground extends Phaser.Scene {
   private soundFx!:Phaser.GameObjects.Graphics;
   private soundLabels:Phaser.GameObjects.Text[]=[];private lastSound=0;private lastFogTick=-10;private nextHum=0;private nextEngine=0;private previousSmoke=0;
   private mini!: Phaser.GameObjects.Graphics;
+  private unitSprites = new Map<number,{hull:Phaser.GameObjects.Image;turret:Phaser.GameObjects.Image}>();
   private activeInput = true;
   clearKeys():void{controls.clear();this.input.keyboard?.resetKeys();}
   private lastEffect = 0;
@@ -124,16 +126,10 @@ class Playground extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>{if(p.rightButtonDown()&&this.activeInput&&!settingsOpen())weapon('cancel');});
     this.input.keyboard!.addKey('T').on('down',()=>{if(rangeMode&&this.activeInput&&!settingsOpen()&&!Object.values(settings.bindings).includes('KeyT'))worker.postMessage({type:'range-fire'});});
-    const colors = { grass: 0x263a30, road: 0x696453, mud: 0x594a37, brush: 0x40593a };
-    const ground = this.add.graphics();
-    trainingMap.terrain.forEach((tile, i) => {
-      const x = (i % trainingMap.width) * trainingMap.tileSize, y = Math.floor(i / trainingMap.width) * trainingMap.tileSize;
-      ground.fillStyle(colors[tile]).fillRect(x, y, 32, 32);
-      ground.lineStyle(1, 0xffffff, 0.035).strokeRect(x, y, 32, 32);
-    });
-    for (const wall of trainingMap.walls) ground.fillStyle(0x879080).fillRect(wall.x, wall.y, wall.width, wall.height).lineStyle(2, 0xb5c3ac).strokeRect(wall.x, wall.y, wall.width, wall.height);
+    const colors = TERRAIN_COLORS;
+    createBattlefield(this,trainingMap);createTankTextures(this);
     for(const l of trainingMap.landmarks??[])this.add.text(l.x,l.y,l.name.toUpperCase(),{fontFamily:'monospace',fontSize:'15px',color:'#b8c6a8'}).setOrigin(.5);
-    this.hull = this.add.graphics(); this.turret = this.add.graphics(); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
+    this.hull = this.add.image(0,0,'hull-player'); this.turret = this.add.image(0,0,'turret-player').setOrigin(1/3,.5); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
     this.battle.setDepth(3);this.hull.setDepth(5);this.turret.setDepth(5);this.cursor.setDepth(6);
     this.fog=this.add.graphics().setDepth(2);this.smokeFx=this.add.graphics().setDepth(4);this.soundFx=this.add.graphics().setScrollFactor(0).setDepth(7);
     for(let sector=0;sector<8;sector++)this.soundLabels.push(this.add.text(0,0,'',{fontFamily:'monospace',fontSize:'12px',color:'#f1d09c',backgroundColor:'#101b17',padding:{x:4,y:2}}).setOrigin(.5).setScrollFactor(0).setDepth(7));
@@ -160,12 +156,10 @@ class Playground extends Phaser.Scene {
     const aim = Math.atan2(world.y - state.y, world.x - state.x);
     const drive=controls.drive(aim);
     worker.postMessage({type:'input',input:this.activeInput&&!settingsOpen()?drive:{...neutralInput(),aim}});
-    this.hull.clear().fillStyle(0x253322).fillRoundedRect(-24, -24, 48, 48, 5).fillStyle(0x9dad7c).fillRoundedRect(-24, -20, 48, 40, 5).lineStyle(2, 0xd5e0bc).strokeRoundedRect(-24, -20, 48, 40, 5);
     this.hull.setPosition(rendered.x, rendered.y).setRotation(rendered.hull);
     const recoil = settings.reducedMotion?0:Math.max(0, (recoilUntil - performance.now()) / 160) * recoilStrength;
     this.hull.setAlpha(combat?.hp === 0 ? 0.25 : 1); this.turret.setAlpha(combat?.hp === 0 ? 0.25 : 1);
-    this.turret.clear().fillStyle(0xd0dcae).fillRoundedRect(-recoil, -4, 34, 8, 3).fillCircle(0, 0, 12).lineStyle(2, 0x273a2c).strokeCircle(0, 0, 12);
-    this.turret.setPosition(rendered.x, rendered.y).setRotation(rendered.turret);
+    this.turret.setPosition(rendered.x-Math.cos(rendered.turret)*recoil,rendered.y-Math.sin(rendered.turret)*recoil).setRotation(rendered.turret);
     this.cursor.clear().lineStyle(2, 0xffffff, 0.85).strokeCircle(world.x, world.y, 8).lineBetween(world.x - 13, world.y, world.x + 13, world.y).lineBetween(world.x, world.y - 13, world.x, world.y + 13);
     const leadX=settings.reducedMotion?0:Phaser.Math.Clamp(pointerX-480,-240,240)/3,leadY=settings.reducedMotion?0:Phaser.Math.Clamp(pointerY-270,-240,240)/3;
     const cam = this.cameras.main, blend = settings.reducedMotion?1:1 - Math.exp(-Math.min(delta, 100) / 180);
@@ -203,15 +197,26 @@ class Playground extends Phaser.Scene {
       for(const a of [...solo.allies,...solo.enemies])if(a.hp>0){mini.fillStyle(a.team===0?0x87c9e8:0xf49f89);const x=780+a.x/10,y=16+a.y/10;if(a.team===0)mini.fillCircle(x,y,a.id===0?3:2);else mini.fillTriangle(x,y-3,x-3,y+2,x+3,y+2);}
     }
     if (combat) {
+      // Destroy absent/dead contacts, so no stale sprite survives an authorized hide.
+      const liveIds=new Set(soloActors.filter(a=>a.hp>0).map(a=>a.id));
+      for(const [id,sprite] of this.unitSprites)if(!liveIds.has(id)){sprite.hull.destroy();sprite.turret.destroy();this.unitSprites.delete(id);}
       for (const [index, targetState] of combat.targets.entries()) {
         const target = { ...targetState, ...targetPoses.get(index)?.sample(performance.now()) };
         if (target.hp <= 0) continue;
         const actor=soloActors[index], pose=targetPoses.get(index)?.sample(now);
         const color=actor?.team===0?0x87c9e8:0xb87360;
-        if(actor){const angle=pose?.hull??actor.hull,cos=Math.cos(angle),sin=Math.sin(angle);const corners=[[-24,-20],[24,-20],[24,20],[-24,20]].map(([x,y])=>({x:target.x+x*cos-y*sin,y:target.y+x*sin+y*cos}));this.battle.fillStyle(color).fillPoints(corners,true); const bearing=pose?.turret??actor.turret;this.battle.lineStyle(7,0xe5dfbf).lineBetween(target.x,target.y,target.x+Math.cos(bearing)*32,target.y+Math.sin(bearing)*32);if(actor.protection>0)this.battle.lineStyle(2,0xffffff).strokeCircle(target.x,target.y,29);if(actor.team===0)this.battle.lineStyle(2,0xffffff).lineBetween(target.x-5,target.y,target.x+5,target.y).lineBetween(target.x,target.y-5,target.x,target.y+5);else this.battle.lineStyle(2,0xffffff).strokeTriangle(target.x,target.y-6,target.x-6,target.y+4,target.x+6,target.y+4);}
+        if(actor){
+          let sprite=this.unitSprites.get(actor.id);
+          if(!sprite){const skin=actor.team===0?'ally':'enemy';sprite={hull:this.add.image(0,0,'hull-'+skin).setDepth(5),turret:this.add.image(0,0,'turret-'+skin).setOrigin(1/3,.5).setDepth(5.1)};this.unitSprites.set(actor.id,sprite);}
+          sprite.hull.setPosition(target.x,target.y).setRotation(pose?.hull??actor.hull);
+          sprite.turret.setPosition(target.x,target.y).setRotation(pose?.turret??actor.turret);
+          if(actor.protection>0)this.battle.lineStyle(2,0xffffff).strokeCircle(target.x,target.y,29);
+        }
         else this.battle.fillStyle(color).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
         this.battle.fillStyle(0x151c17).fillRect(target.x - 22, target.y - 34, 44, 5).fillStyle(0xf2bf78).fillRect(target.x - 22, target.y - 34, 44 * target.hp / 100, 5);
       }
+      driveStatus.dataset.enemySprites=String([...this.unitSprites.keys()].filter(id=>soloActors.find(a=>a.id===id)?.team===1).length);
+      driveStatus.dataset.allySprites=String([...this.unitSprites.keys()].filter(id=>soloActors.find(a=>a.id===id)?.team===0).length);
       for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.fillStyle(shell.hostile ? 0xff9177 : 0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
       if (performance.now() < hitUntil) this.battle.lineStyle(3,0xffffff).strokeCircle(world.x,world.y,16);
       if (performance.now() < hurtUntil) this.battle.lineStyle(4,0xff9177).strokeCircle(rendered.x,rendered.y,38);

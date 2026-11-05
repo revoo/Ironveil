@@ -28,6 +28,11 @@ Reassess online scope with the owner after the solo loop is enjoyable. The exist
 
 TDD, conservative manual CI, milestone commits/pushes, and milestone-only playtest handoffs remain active project instructions.
 
-## Current milestone: S4 — team deathmatch experiment (implemented; awaiting playtest)
+## S4 — team deathmatch experiment (accepted for progression)
 
-The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping as a weak mode loop and expressed a preference for team deathmatch. Keep that finding explicit: systems approval is not Relay fun validation. S3 leaves the mode unchanged while completing usability/offline delivery. The owner accepted S3 and authorized the next milestone on November 5. The [S4 handoff](s4.md) records the implemented default team deathmatch replacement: 15 team kills or seven minutes, bounded overtime, search/engage/reposition bots and updated training. Await owner playtest before expanding scope.
+The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping as a weak mode loop and expressed a preference for team deathmatch. Keep that finding explicit: systems approval is not Relay fun validation. S3 leaves the mode unchanged while completing usability/offline delivery. The owner accepted S3 and authorized the next milestone on November 5. The [S4 handoff](s4.md) records the implemented default team deathmatch replacement: 15 team kills or seven minutes, bounded overtime, search/engage/reposition bots and updated training. The owner accepted this experiment for progression on November 5 (“very good. continue”).
+
+
+## Current milestone: S5 — battlefield art and tank readability (implemented; awaiting playtest)
+
+The [S5 handoff](s5.md) records a bounded presentation pass: textured terrain, brush foliage, dressed existing cover and separate tank hull/turret sprites with team symbols. Preserve the accepted solo deathmatch, movement and perception rules. This is presentation work toward the original M7 goals, not final-art or Gate C completion. Await owner feedback on readability before further expansion. Multiplayer remains deferred.

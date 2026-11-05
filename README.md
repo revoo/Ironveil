@@ -1,6 +1,6 @@
 # Ironveil
 
-Ironveil is a top-down tank game focused on local solo play. The current milestone is **S4: team deathmatch experiment**, awaiting owner playtest. Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [S4 handoff](docs/s4.md).
+Ironveil is a top-down tank game focused on local solo play. The current milestone is **S5: battlefield art and tank readability**, awaiting owner playtest. Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [S5 handoff](docs/s5.md).
 
 ## Run locally
 
