@@ -1,13 +1,15 @@
+import type {Difficulty} from '../shared/content/difficulty';
 import { performance } from 'node:perf_hooks';
 import { SoloMatch } from '../shared/sim/match';
 import {relaySmallMap as trainingMap} from '../shared/content/relay-yard';
 const count = Number(process.argv[2] ?? 100);
 if (!Number.isInteger(count) || count < 1 || count > 1000)
     throw new Error('Use 1–1000 matches');
+const difficulty=(process.argv[3]??'normal') as Difficulty;if(!['easy','normal','hard'].includes(difficulty))throw new Error('Choose easy, normal or hard');
 const started = performance.now(), wins = [0, 0];
 let draws = 0, deaths = 0, maxShells = 0, maxIdle = 0, totalTicks = 0;
 for (let seed = 1; seed <= count; seed++) {
-    const match = new SoloMatch(trainingMap, seed), alive = [true, true, true, true], idle = [0, 0, 0, 0], prior = match.actors.map(a => ({ x: a.x, y: a.y }));
+    const match = new SoloMatch(trainingMap, seed,difficulty), alive = [true, true, true, true], idle = [0, 0, 0, 0], prior = match.actors.map(a => ({ x: a.x, y: a.y }));
     for (let tick = 0; tick < 14400 && match.result === null; tick++) {
         match.step();
         maxShells = Math.max(maxShells, match.shells.length);
@@ -31,4 +33,4 @@ for (let seed = 1; seed <= count; seed++) {
         wins[match.result]++;
     totalTicks += match.tick;
 }
-console.log(JSON.stringify({ matches: count, idleHuman: true, wins, draws, deaths, maxShells, maxBotIdleSeconds: maxIdle / 30, totalTicks, elapsedMs: Math.round(performance.now() - started) }, null, 2));
+console.log(JSON.stringify({ matches: count, difficulty,idleHuman: true, wins, draws, deaths, maxShells, maxBotIdleSeconds: maxIdle / 30, totalTicks, elapsedMs: Math.round(performance.now() - started) }, null, 2));

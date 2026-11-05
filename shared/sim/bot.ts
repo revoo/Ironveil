@@ -1,3 +1,4 @@
+import {SKILL,type Difficulty} from '../content/difficulty';
 import type { Observation } from './match';
 import { findPath } from './navigation';
 import type { GameMap } from '../content';
@@ -39,7 +40,8 @@ export interface BotState {
 }
 export function newBotState(seed: number): BotState { return { seed, drive: neutralInput(), actions: [], path: [], planned: -100, stuck: 0 }; }
 /** Deliberately accepts only authorized team observations and static map geometry. */
-export function botIntent(o: Observation, id: number, map: GameMap, s: BotState): void {
+export function botIntent(o: Observation, id: number, map: GameMap, s: BotState,difficulty:Difficulty='normal'): void {
+    const skill=SKILL[difficulty];
     const self = o.allies.find(a => a.id === id);
     s.actions = [];
     s.smoke = false;
@@ -57,9 +59,9 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState)
             s.targetId = enemy.id;
             s.acquired = o.tick;
         }
-        aim = Math.atan2(enemy.y - self.y, enemy.x - self.x) + (s.seed / 0xffffffff - 0.5) * 0.1;
+        aim = Math.atan2(enemy.y - self.y, enemy.x - self.x) + (s.seed / 0xffffffff - 0.5) * skill.aimError;
         const aligned = Math.abs(Math.atan2(Math.sin(aim - self.turret), Math.cos(aim - self.turret))) < 0.13;
-        if (o.tick - (s.acquired ?? o.tick) >= 8 && aligned && self.weapon === 'ready')
+        if (o.tick - (s.acquired ?? o.tick) >= skill.reactionTicks && aligned && self.weapon === 'ready')
             s.actions.push('press');
         if (self.weapon === 'charging' && aligned && self.charge >= (Math.hypot(enemy.x - self.x, enemy.y - self.y) > 280 ? 0.55 : 0.15))
             s.actions.push('release');
@@ -78,14 +80,14 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState)
         s.repositionGoal = { x: Math.max(48, Math.min(map.width * 32 - 48, self.x + Math.cos(direction + 0.5) * 160)), y: Math.max(48, Math.min(map.height * 32 - 48, self.y + Math.sin(direction + 0.5) * 160)) };
     }
     if (!enemy) {
-        const sight = o.sightings.find(e => e.expires > o.tick);
+        const sight = o.sightings.find(e => e.expires > o.tick && o.tick-(e.expires-90)<=skill.memoryTicks);
         const track = o.tracks.filter(t => t.stage === 0 && t.expires > o.tick && Math.hypot(t.x - self.x, t.y - self.y) < 250).sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y))[0];
         const sound = o.sounds.find(s => s.expires > o.tick);
         const evidence = sight ?? track;
         const evidenceId = evidence?.id ?? sound?.id;
         if (evidenceId !== undefined && evidenceId !== s.evidenceId) {
             s.evidenceId = evidenceId;
-            s.investigateUntil = o.tick + 60;
+            s.investigateUntil = o.tick + skill.investigateTicks;
             s.investigateGoal = evidence ? { x: evidence.x, y: evidence.y } : { x: Math.max(48, Math.min(map.width * 32 - 48, self.x + Math.cos(sound!.sector * Math.PI / 4) * 160)), y: Math.max(48, Math.min(map.height * 32 - 48, self.y + Math.sin(sound!.sector * Math.PI / 4) * 160)) };
         }
         if ((s.investigateUntil ?? 0) > o.tick && s.investigateGoal) {

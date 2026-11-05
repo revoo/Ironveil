@@ -10,12 +10,13 @@
     "dev": "npm run dev:client",
     "dev:client": "vite --host 127.0.0.1",
     "dev:server": "tsx watch server/index.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node --import tsx tools/build-offline.ts",
     "test": "vitest run",
     "validate:map": "node --import tsx tools/validate-map.ts",
     "test:browser": "playwright test",
     "dev:all": "concurrently -k -n server,client 'npm:dev:server' 'npm:dev:client'",
-    "diagnostics:solo": "node --import tsx tools/solo-diagnostics.ts"
+    "diagnostics:solo": "node --import tsx tools/solo-diagnostics.ts",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
   },
   "dependencies": {
     "@colyseus/core": "0.16.24",

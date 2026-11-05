@@ -12,18 +12,22 @@ Implementation and local verification are recorded in [the S1 handoff](s1.md); t
 
 Bring forward only the bot/navigation and minimal match rules needed for this playable milestone. No second weapon, special mechanics, polished art or online systems. Write behavior tests before implementation, including team damage, respawn/scoring order, fair bot observations, navigation, pause and lifecycle. Deliver one runnable milestone and request owner playtest at completion, rather than after intermediate slices.
 
-## Current milestone: S2 — stealth and encounter loop (implemented; awaiting playtest)
+## S2 — stealth and encounter loop (systems accepted; mode refinement deferred)
 
 The [S2 handoff](s2.md) records implementation and local verification. Scope: the Relay Yard gray box, brush, wall/smoke sight rules, silent running, coarse sound evidence, mud tracks, stale sightings and map approaches. Keep local play filtered through the same observation boundary as bot decisions. Evaluate scouting, shot choices, escape/reappearance and understandable ambushes through owner solo playtests. Record this as solo evidence: it does not establish multiplayer balance or satisfy the original several-human-match Gate B procedure.
 
 Tune controls, cues, map routes and bot fallibility based on encounters. Do not add content to compensate for a weak loop. Forest-depth occlusion remains out of scope; brush concealment and map dressing are the specified vegetation mechanics.
 
-## S3 — solo usability and delivery
+## Current milestone: S3 — solo usability and delivery (implemented; awaiting playtest)
 
-Add difficulty presets, tutorial/settings/accessibility, presentation refinement and robust offline caching once the local loop is promising. These remain milestone-level handoffs with explicit human feedback.
+The [S3 handoff](s3.md) records difficulty presets, guided training, controls/settings/accessibility and verified offline caching. The owner authorized this delivery work while deferring mode refinement. These remain milestone-level handoffs with explicit human feedback.
 
 ## Deferred online phase
 
 Reassess online scope with the owner after the solo loop is enjoyable. The existing shared-simulation boundary keeps the option open. Online authority, filtering, reconciliation, reconnect and operational/load validation still require their own implementation and evidence before any multiplayer release. Do not claim solo results validate those systems.
 
 TDD, conservative manual CI, milestone commits/pushes, and milestone-only playtest handoffs remain active project instructions.
+
+## Preferred next experiment: team deathmatch
+
+The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping as a weak mode loop and expressed a preference for team deathmatch. Keep that finding explicit: systems approval is not Relay fun validation. S3 leaves the mode unchanged while completing usability/offline delivery. After its handoff, prioritize a bounded TDM experiment over polishing the Relay loop or adding unrelated content, when the owner directs the next gameplay work.

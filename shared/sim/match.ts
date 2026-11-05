@@ -1,3 +1,4 @@
+import type {Difficulty} from '../content/difficulty';
 import { groundSight, tankSight, type Smoke, type Track, type Sighting, type SoundCue, type RawSound } from './perception';
 import { terrainAt, speedCap } from './index';
 import { SOLO_LAYOUT } from '../content/solo-layout';
@@ -33,6 +34,7 @@ export interface ActorView extends Tank {
     remainingTicks: number;
 }
 export interface Observation {
+    difficulty:Difficulty;
     smokes: Smoke[];
     tracks: Track[];
     sightings: Sighting[];
@@ -141,7 +143,7 @@ export class SoloMatch {
     private nextShell = 1;
     private nextEvent = 1;
     private botStates: BotState[] = [];
-    constructor(readonly map: GameMap, readonly seed = 1) { this.restart(); }
+    constructor(readonly map: GameMap, readonly seed = 1,public difficulty:Difficulty='normal') { this.restart(); }
     get sites() { return this.map.sites ?? SOLO_LAYOUT.sites; }
     get spawnPoints() { return this.map.spawns ?? SOLO_LAYOUT.spawns; }
     get zone(): {
@@ -179,7 +181,7 @@ export class SoloMatch {
             this.ground[team] = cells;
             this.groundTick[team] = this.tick;
         }
-        return { smokes: this.smokes.filter(s => observers.some(o => Math.hypot(o.x - s.x, o.y - s.y) <= 100 || groundSight(this.map, this.smokes.filter(c => c.id !== s.id), o, s, 540))).map(s => ({ ...s })), tracks: [...this.trackMemory[team].values()].map(t => ({ ...t, stage: Math.min(2, Math.floor((360 - (t.expires - this.tick)) / 120)) })), sightings: [...this.sightings[team].values()].filter(s => !this.actors.some(a => a.id === s.id && this.visibleTank(team, a))).map(s => ({ ...s })), sounds, ground: includeGround ? [...this.ground[team]] : [], tick: this.tick, paused: this.paused, allies: allies.map(a => this.actorView(a)), enemies: this.actors.filter(a => a.team !== team && a.hp > 0 && this.visibleTank(team, a)).map(a => this.actorView(a)), zone: { ...this.zone }, nextZone: { ...this.sites[(Math.floor(this.tick / 1800) + 1) % 3] }, rotationIn: (1800 - this.tick % 1800) / 30, scores: [...this.scores], secondsLeft: Math.max(0, ((this.sudden ? 14400 : 12600) - this.tick) / 30), sudden: this.sudden, result: this.result, shells: this.shells.filter(visible).map(s => ({ id: s.id, x: s.x, y: s.y, angle: s.angle, speed: s.speed, damage: s.damage, remaining: s.remaining, charge: s.charge, hostile: s.team !== team })), events: this.events.filter(visible).map(e => ({ ...e })) };
+        return { difficulty:this.difficulty,smokes: this.smokes.filter(s => observers.some(o => Math.hypot(o.x - s.x, o.y - s.y) <= 100 || groundSight(this.map, this.smokes.filter(c => c.id !== s.id), o, s, 540))).map(s => ({ ...s })), tracks: [...this.trackMemory[team].values()].map(t => ({ ...t, stage: Math.min(2, Math.floor((360 - (t.expires - this.tick)) / 120)) })), sightings: [...this.sightings[team].values()].filter(s => !this.actors.some(a => a.id === s.id && this.visibleTank(team, a))).map(s => ({ ...s })), sounds, ground: includeGround ? [...this.ground[team]] : [], tick: this.tick, paused: this.paused, allies: allies.map(a => this.actorView(a)), enemies: this.actors.filter(a => a.team !== team && a.hp > 0 && this.visibleTank(team, a)).map(a => this.actorView(a)), zone: { ...this.zone }, nextZone: { ...this.sites[(Math.floor(this.tick / 1800) + 1) % 3] }, rotationIn: (1800 - this.tick % 1800) / 30, scores: [...this.scores], secondsLeft: Math.max(0, ((this.sudden ? 14400 : 12600) - this.tick) / 30), sudden: this.sudden, result: this.result, shells: this.shells.filter(visible).map(s => ({ id: s.id, x: s.x, y: s.y, angle: s.angle, speed: s.speed, damage: s.damage, remaining: s.remaining, charge: s.charge, hostile: s.team !== team })), events: this.events.filter(visible).map(e => ({ ...e })) };
     }
     private spawn(a: Actor): void {
         const enemies = this.actors.filter(e => e.team !== a.team && e.hp > 0);
@@ -205,7 +207,7 @@ export class SoloMatch {
             for (const a of this.actors.filter(a => a.id !== 0 && a.hp > 0)) {
                 const b = this.botStates[a.id];
                 if (this.tick % 5 === a.id % 5)
-                    botIntent(this.view(a.team, a.id, false), a.id, this.map, b);
+                    botIntent(this.view(a.team, a.id, false), a.id, this.map, b,this.difficulty);
                 smokeIntents[a.id] = !!b.smoke;
                 b.smoke = false;
                 intents[a.id] = { drive: b.drive, actions: b.actions };
