@@ -1,0 +1,3 @@
+import {expect,it} from 'vitest';import {normalPixels} from '../client/lighting';
+it('encodes a flat surface facing the camera without changing its heights',()=>{const h=new Float32Array(9).fill(3),copy=h.slice(),p=normalPixels(3,3,h);expect([...p.slice(16,20)]).toEqual([128,128,255,255]);expect(h).toEqual(copy);});
+it('points normals away from a raised ridge and keeps edges finite',()=>{const h=new Float32Array([0,4,8,4,0,0,4,8,4,0,0,4,8,4,0]),p=normalPixels(5,3,h);expect(p[(5+1)*4]).toBeLessThan(128);expect(p[(5+3)*4]).toBeGreaterThan(128);for(let i=0;i<15;i++){expect(p[i*4+2]).toBeGreaterThan(127);expect(p[i*4+3]).toBe(255);}});

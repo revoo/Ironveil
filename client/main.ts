@@ -1,3 +1,5 @@
+import {lightSurface} from './lighting';
+import {FxRenderer} from './fx-renderer';
 import {RecoilRig,type RecoilPose} from './recoil';
 import {combatHUD,SECTORS} from './combat-hud';
 import {createBattlefield,createTankTextures,TERRAIN_COLORS} from './art';
@@ -122,7 +124,7 @@ class Playground extends Phaser.Scene {
   private battle!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private fog!:Phaser.GameObjects.Graphics;
-  private smokeFx!:Phaser.GameObjects.Graphics;
+  private fx!:FxRenderer;
   private soundFx!:Phaser.GameObjects.Graphics;
   private soundLabels:Phaser.GameObjects.Text[]=[];private lastSound=0;private lastFogTick=-10;private nextHum=0;private nextEngine=0;private previousSmoke=0;
   private mini!: Phaser.GameObjects.Graphics;
@@ -134,9 +136,8 @@ class Playground extends Phaser.Scene {
   clearKeys():void{showScoreboard(false);controls.clear();this.input.keyboard?.resetKeys();}
   private recoils=new Map<number,RecoilRig>();
   private playerKicks=0;private playerPeak=0;
-  resetRecoil():void{this.recoils.clear();this.playerKicks=0;this.playerPeak=0;}
+  resetRecoil():void{this.fx?.reset();this.recoils.clear();this.playerKicks=0;this.playerPeak=0;}
   private lastEffect = 0;
-  private effects: {event: CombatEvent; until:number}[] = [];
   preload():void {this.load.audio('music',wavData(musicWav())); for(const kind of ['tap','full','impact','destruction','vent','engine','charge','smoke'] as const) this.load.audio(kind,audioData(kind)); }
   constructor() { super('playground'); }
   create(): void {
@@ -145,11 +146,11 @@ class Playground extends Phaser.Scene {
     this.input.on('pointerdown',(p:Phaser.Input.Pointer)=>{if(p.rightButtonDown()&&this.activeInput&&!settingsOpen())weapon('cancel');});
     this.input.keyboard!.addKey('T').on('down',()=>{if(rangeMode&&this.activeInput&&!settingsOpen()&&!Object.values(settings.bindings).includes('KeyT'))worker.postMessage({type:'range-fire'});});
     const colors = TERRAIN_COLORS;
-    createBattlefield(this,trainingMap);createTankTextures(this);
+    createBattlefield(this,trainingMap);createTankTextures(this);this.fx=new FxRenderer(this);
     for(const l of trainingMap.landmarks??[])this.add.text(l.x,l.y,l.name.toUpperCase(),{fontFamily:'monospace',fontSize:'15px',color:'#b8c6a8'}).setOrigin(.5);
-    this.hull = this.add.image(0,0,'hull-player'); this.turret = this.add.image(0,0,'turret-player').setOrigin(1/3,.5); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
+    this.hull = lightSurface(this.add.image(0,0,'hull-player')); this.turret = lightSurface(this.add.image(0,0,'turret-player').setOrigin(1/3,.5)); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
     this.battle.setDepth(3);this.hull.setDepth(5);this.turret.setDepth(5);this.cursor.setDepth(6);
-    this.fog=this.add.graphics().setDepth(2);this.smokeFx=this.add.graphics().setDepth(4);this.soundFx=this.add.graphics().setScrollFactor(0).setDepth(7);
+    this.fog=this.add.graphics().setDepth(2);this.soundFx=this.add.graphics().setScrollFactor(0).setDepth(7);
     for(let sector=0;sector<8;sector++)this.soundLabels.push(this.add.text(0,0,'',{fontFamily:'monospace',fontSize:'12px',color:'#f1d09c',backgroundColor:'#101b17',padding:{x:4,y:2}}).setOrigin(.5).setScrollFactor(0).setDepth(7));
     const miniGround=this.add.graphics();for(let i=0;i<trainingMap.terrain.length;i++)miniGround.fillStyle(colors[trainingMap.terrain[i]]).fillRect(i%trainingMap.width*3.2,Math.floor(i/trainingMap.width)*3.2,3.2,3.2);miniGround.generateTexture('mini-ground',160,96);miniGround.destroy();this.add.image(780,16,'mini-ground').setOrigin(0).setScrollFactor(0).setDepth(6.5);
     for(const l of trainingMap.landmarks??[])this.add.text(780+l.x/10,16+l.y/10+6,l.name==='Radio Tower'?'RADIO':l.name==='Broken Bridge'?'BRIDGE':'DEPOT',{fontFamily:'monospace',fontSize:'9px',color:'#d8ddc4',backgroundColor:'#101b17'}).setOrigin(.5).setScrollFactor(0).setDepth(8);
@@ -180,8 +181,7 @@ class Playground extends Phaser.Scene {
         const rig=this.recoils.get(event.actorId)??new RecoilRig();rig.kick(event.charge,event.angle);this.recoils.set(event.actorId,rig);
         if(event.actorId===0){this.playerKicks++;this.playerPeak=0;}
       }
-      if(this.effects.length >= (settings.lowEffects?16:64)) this.effects.shift();
-      this.effects.push({event,until:now+(event.kind === 'destruction' ? 450 : 220)});
+      this.fx.emit(event);
       if(!this.sound.locked) this.playFX(event.kind === 'shot' ? (event.charge >= 0.5 ? 'full' : 'tap') : event.kind, {volume:event.kind === 'shot' ? 0.25+0.15*event.charge : 0.15});
     }
     const recoilPoses=new Map<number,RecoilPose>();
@@ -204,17 +204,14 @@ class Playground extends Phaser.Scene {
     const leadX=settings.reducedMotion?0:Phaser.Math.Clamp(pointerX-480,-240,240)/3,leadY=settings.reducedMotion?0:Phaser.Math.Clamp(pointerY-270,-240,240)/3;
     const cam = this.cameras.main, blend = settings.reducedMotion?1:1 - Math.exp(-Math.min(delta, 100) / 180);
     cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, rendered.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, rendered.y + leadY, blend));
-    this.effects = this.effects.filter(effect=>effect.until > now);
     this.battle.clear();
-    for(const effect of this.effects) {
-      const event=effect.event, fade=Math.min(1,(effect.until-now)/220);
-      const radius=settings.reducedMotion?12:event.kind === 'destruction' ? 22+(1-fade)*20 : 4+(1-fade)*(12+event.charge*10);
-      if(event.kind==='shot'&&effect.until-now>160)this.battle.fillStyle(0xffedab).fillCircle(event.x,event.y,3+event.charge*5);
-      this.battle.lineStyle(event.kind === 'destruction' ? 4 : 2,event.kind === 'vent' ? 0xa2b4ac : 0xffd99b,fade).strokeCircle(event.x,event.y,radius);
-    }
+    const visibleGround=solo?new Set(solo.ground):undefined;
+    const visible=(x:number,y:number)=>!visibleGround||visibleGround.has(Math.floor(y/32)*trainingMap.width+Math.floor(x/32));
+    const visualUnits=[...(combat&&combat.hp>0?[{id:0,...rendered,hp:combat.hp,speed:state.speed,charge:combat.charge}]:[]),...soloActors.map((a,index)=>({...a,...targetPoses.get(index)?.sample(now)})).filter(a=>a.hp>0)];
+    const counts=this.fx.render({seconds:Math.min(delta/1000,.1),paused:solo?.paused??false,units:visualUnits,smokes:solo?.smokes??[],shells:(combat?.shells??[]).map(s=>({...s,...shellPoses.get(s.id)?.sample(now)})),visible,options:settings});
+    driveStatus.dataset.fxParticles=String(counts.particles);driveStatus.dataset.fxLights=String(counts.lights);driveStatus.dataset.fxWrecks=String(counts.wrecks);driveStatus.dataset.fxSmokes=String(counts.smokes);driveStatus.dataset.fxTime=this.fx.model.time.toFixed(3);
     if(solo) {
       if(solo.tick<this.lastFogTick||solo.tick-this.lastFogTick>=3||solo.paused){this.lastFogTick=solo.tick;const visible=new Set(solo.ground);this.fog.clear().fillStyle(0x08110d,0.56);for(let i=0;i<trainingMap.terrain.length;i++)if(!visible.has(i))this.fog.fillRect(i%trainingMap.width*32,Math.floor(i/trainingMap.width)*32,32,32);}
-      this.smokeFx.clear();for(const cloud of solo.smokes)this.smokeFx.fillStyle(0xa8b2a8,0.92).fillCircle(cloud.x,cloud.y,100).lineStyle(2,0xd2d7c8,0.8).strokeCircle(cloud.x,cloud.y,100);
       for(const stamp of solo.tracks){const dx=Math.cos(stamp.axis)*9,dy=Math.sin(stamp.axis)*9,ox=Math.sin(stamp.axis)*6,oy=-Math.cos(stamp.axis)*6;this.battle.lineStyle(3,0x1b251b,[0.75,0.5,0.25][stamp.stage]).lineBetween(stamp.x-dx+ox,stamp.y-dy+oy,stamp.x+dx+ox,stamp.y+dy+oy).lineBetween(stamp.x-dx-ox,stamp.y-dy-oy,stamp.x+dx-ox,stamp.y+dy-oy);}
       for(const sight of solo.sightings){const alpha=Math.max(0,(sight.expires-solo.tick)/90)*0.5;this.battle.lineStyle(2,0xc4b7a0,alpha).lineBetween(sight.x-10,sight.y-10,sight.x+10,sight.y+10).lineBetween(sight.x+10,sight.y-10,sight.x-10,sight.y+10);}
       this.soundFx.clear();this.soundLabels.forEach(l=>l.setVisible(false));
@@ -241,7 +238,7 @@ class Playground extends Phaser.Scene {
         const color=actor?.team===0?0x87c9e8:0xb87360;
         if(actor){
           let sprite=this.unitSprites.get(actor.id);
-          if(!sprite){const skin=actor.team===0?'ally':'enemy';sprite={hull:this.add.image(0,0,'hull-'+skin).setDepth(5),turret:this.add.image(0,0,'turret-'+skin).setOrigin(1/3,.5).setDepth(5.1)};this.unitSprites.set(actor.id,sprite);}
+          if(!sprite){const skin=actor.team===0?'ally':'enemy';sprite={hull:lightSurface(this.add.image(0,0,'hull-'+skin).setDepth(5)),turret:lightSurface(this.add.image(0,0,'turret-'+skin).setOrigin(1/3,.5).setDepth(5.1))};this.unitSprites.set(actor.id,sprite);}
           const kick=recoilPoses.get(actor.id)??{x:0,y:0,barrel:0},bearing=pose?.turret??actor.turret;
           sprite.hull.setPosition(target.x+kick.x,target.y+kick.y).setRotation(pose?.hull??actor.hull);
           sprite.turret.setPosition(target.x+kick.x-Math.cos(bearing)*kick.barrel,target.y+kick.y-Math.sin(bearing)*kick.barrel).setRotation(bearing);
@@ -280,7 +277,7 @@ class Playground extends Phaser.Scene {
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
-new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });
+new Phaser.Game({ render:{maxLights:8}, type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });
 window.addEventListener('blur', () => gameScene?.neutralize());
 window.addEventListener('focus', () => gameScene?.reactivate());
 document.addEventListener('visibilitychange', () => { lastWorkerAt=performance.now();if (document.hidden) { gameScene?.neutralize(); if(!rangeMode)pause(true); } else gameScene?.reactivate(); });

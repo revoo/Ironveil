@@ -1,3 +1,4 @@
+import {attachNormals,lightSurface} from './lighting';
 import type Phaser from 'phaser';
 import type {GameMap} from '../shared/content';
 export interface Dressing {kind:'pine'|'grass'|'stone';x:number;y:number;radius:number;variant:number}
@@ -25,6 +26,9 @@ export function createBattlefield(scene:Phaser.Scene,map:GameMap):void{
   for(let j=0;j<4;j++)g.fillEllipse(x+((h>>>(j*5))%26)+3,y+((h>>>(j*3+2))%26)+3,terrain==='mud'?9:3,2);
   if(terrain==='brush')g.fillStyle(0x152e23,.25).fillCircle(x+16,y+16,15);
  });
+ // A common northwest sun direction grounds foliage and buildings consistently.
+ for(const w of map.walls)g.fillStyle(0x101f1b,.3).fillRect(w.x+9,w.y+12,w.width,w.height).fillStyle(0x10201a,.15).fillRect(w.x+5,w.y+7,w.width,w.height);
+ for(const p of buildDressing(map))if(p.kind==='pine')g.fillStyle(0x101f17,.22).fillEllipse(p.x+6,p.y+8,30,23);
  for(const p of buildDressing(map)){
   if(p.kind==='grass'){
    g.lineStyle(1,0x92a16c,.36).lineBetween(p.x-4,p.y+4,p.x-6,p.y-3).lineBetween(p.x,p.y+4,p.x+1,p.y-5).lineBetween(p.x+3,p.y+3,p.x+6,p.y-1);
@@ -55,7 +59,14 @@ export function createBattlefield(scene:Phaser.Scene,map:GameMap):void{
 
   g.lineStyle(2,0x242f29).strokeRect(w.x,w.y,w.width,w.height);
  }
- g.generateTexture('battlefield',map.width*map.tileSize,map.height*map.tileSize);g.destroy();scene.add.image(0,0,'battlefield').setOrigin(0);
+ g.generateTexture('battlefield',map.width*map.tileSize,map.height*map.tileSize);g.destroy();
+ const width=map.width*map.tileSize,height=map.height*map.tileSize;
+ // Build once at load. Raised roofs/canopies catch flashes; no tactical geometry changes.
+ const elevations=new Float32Array(width*height);
+ for(const p of buildDressing(map))if(p.kind==='pine')for(let dy=-15;dy<=15;dy++)for(let dx=-15;dx<=15;dx++){const r=Math.hypot(dx,dy);if(r<15)elevations[(p.y+dy)*width+p.x+dx]=Math.max(0,1-r/15)*15;}
+ for(const w of map.walls)for(let y=w.y;y<w.y+w.height;y++)for(let x=w.x;x<w.x+w.width;x++)elevations[y*width+x]=Math.min(10,x-w.x,w.x+w.width-1-x,y-w.y,w.y+w.height-1-y)*2;
+ attachNormals(scene,'battlefield',width,height,(x,y)=>elevations[y*width+x]);
+ lightSurface(scene.add.image(0,0,'battlefield').setOrigin(0));
 }
 export type TankSkin='player'|'ally'|'enemy';
 export function createTankTextures(scene:Phaser.Scene):void{
@@ -70,6 +81,7 @@ export function createTankTextures(scene:Phaser.Scene):void{
   g.fillStyle(0x344333).fillRect(15,24,10,16);for(let y=26;y<40;y+=4)g.lineStyle(1,0x879077).lineBetween(16,y,23,y);
   g.fillStyle(colors[1]).fillCircle(50,25,2).fillCircle(50,39,2);
   g.generateTexture('hull-'+skin,64,64);g.clear();
+  attachNormals(scene,'hull-'+skin,64,64,(x,y)=>x>=10&&x<=56&&y>=18&&y<=46?Math.min(6,x-10,56-x,y-18,46-y)*1.4:0);
   g.fillStyle(0x18291e).fillRoundedRect(21,21,24,24,5).fillRect(34,28,34,10);
   g.fillStyle(colors[0]).fillRoundedRect(21,20,24,23,5).fillRect(37,28,30,7);
   g.fillStyle(colors[1]).fillRect(43,28,22,2).fillCircle(31,29,7);
@@ -79,5 +91,6 @@ export function createTankTextures(scene:Phaser.Scene):void{
   else if(skin==='ally')g.lineBetween(27,36,35,36).lineBetween(31,32,31,40);
   else g.strokeCircle(31,36,4);
   g.generateTexture('turret-'+skin,96,64);g.destroy();
+  attachNormals(scene,'turret-'+skin,96,64,(x,y)=>Math.max(0,1-Math.hypot((x-32)/14,(y-32)/14))*12+(x>=40&&x<=70&&y>=27&&y<=36?Math.max(0,4-Math.abs(y-31.5)):0));
  }
 }
