@@ -55,7 +55,7 @@ Current validation evidence is recorded below and in GitHub CI. Human playtestin
 ### Local verification
 
 - 107 unit tests pass, including standalone serving/MIME/cache/path checks and fixed-clock/event-inbox tests.
-- All 33 final Chromium acceptance tests pass. Packaged offline acceptance is rerun against the exact final source archive before handoff.
+- All 33 final Chromium acceptance tests pass. All three offline acceptance tests also pass against the standalone package on port 4180, including full Chromium process shutdown/restart with networking disabled, missing-Worker detection/repair and first-visit failure.
 - Chromium/WebKit engine smoke suite: five pass; WebKit offline emulation is explicitly skipped after reproducing the matching [upstream Playwright navigation issue](https://github.com/microsoft/playwright/issues/42775). Both engines boot, drive, pause and run the production range without sockets. Chromium offline reload passes.
 - Firefox 141 was installed, but its automated test context stalled on this host and was stopped. Firefox validation is not claimed. It remains opt-in via `IRONVEIL_FIREFOX=1`; the engine suite has a bounded global timeout.
 - Two simulation hours per difficulty (648,000 total ticks, six simulated hours) completed across repeated real match restarts. This is accelerated headless execution, not six wall-clock hours or an online load test. Max tracks 8/8/5 and max shells 4/4/4; no invalid actor state or storage-bound violation. Headless step p99 was 0.061/0.066/0.062 ms on the M1 Pro reference host. These measurements exclude rendering and do not calibrate player difficulty.
@@ -69,3 +69,8 @@ Recommended verified browser for the final playtest is Chromium/Chrome. A real S
 The owner should now play the completed tutorial and a solo match, including smoke/quiet pursuit, quick versus charged fire, incoming direction, settings, scoreboard and fullscreen. An offline Chromium restart has automated evidence; perceived mix/readability and mode balance still require the owner. The original four-of-five unfamiliar-user Gate C procedure is pending and cannot be replaced with automated tutorial completion.
 
 Existing development-only Colyseus/dependency advisories remain outside the static solo package; do not expose that diagnostic server publicly. The large Phaser bundle and prior long-run Node/Chromium floating-point divergence remain documented limitations. Online authority, prediction/reconciliation, reconnect, rooms/queues, bot fill for disconnected humans, multiplayer load/soak, VPS/TLS operations and public deployment remain deferred by the owner. They are not implied by solo completion.
+
+
+## Final source and artifact
+
+Source checkpoint: `a0a368a7dd89f74e6689419f4cfe024b0ec40004`. The archive contains that source identifier in build-info.json. Archive: `release/ironveil-solo-v1.tar.gz`; SHA-256 `e8cccf7d0cbe8d970c66ef20fea4bc87ffb301fc928b67d6bc65f7c3267d9050`. It was served by its included server on port 4180 and passed the standalone offline checks. The final [manual CI checkpoint](https://github.com/revoo/Ironveil/actions/runs/42077929600) passed for that source. No new CI run is needed for documentation-only recording of results.
