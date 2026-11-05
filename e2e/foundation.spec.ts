@@ -62,3 +62,16 @@ test('Space holds charge, right click cancels, and left click does not fire', as
   await page.keyboard.up('Space');
   await expect(status).toHaveAttribute('data-weapon', 'ready');
 });
+
+test('range reset clears damage and toggled incoming training fire', async ({ page }) => {
+  await page.goto('/');
+  const status = page.locator('#drive-status');
+  await expect(status).toHaveAttribute('data-hp','100');
+  await page.keyboard.press('t');
+  await expect(status).toHaveAttribute('data-incoming','true');
+  await expect.poll(async()=>Number(await status.getAttribute('data-hp')), {timeout:8000}).toBeLessThan(100);
+  await page.keyboard.press('r');
+  await expect(status).toHaveAttribute('data-hp','100');
+  await expect(status).toHaveAttribute('data-incoming','false');
+  await expect(status).toHaveAttribute('data-x','160');
+});

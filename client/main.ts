@@ -11,6 +11,8 @@ const workerStatus = document.querySelector('#worker-status')!;
 const driveStatus = document.querySelector<HTMLElement>('#drive-status')!;
 const worker = new Worker(new URL('./solo-worker/worker.ts', import.meta.url), { type: 'module' });
 const tankPoses = new PoseBuffer();
+const targetPoses = new Map<number, PoseBuffer>();
+let recoilUntil = 0, recoilStrength = 0, hitUntil = 0, hurtUntil = 0;
 const shellPoses = new Map<number, PoseBuffer>();
 let state: Tank | undefined;
 let combat: CombatView | undefined;
@@ -18,9 +20,15 @@ let gameScene: Playground | undefined;
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const m = event.data;
   if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start' }); }
-  else if (m.type === 'state') { state = m.tank; combat = m.combat;
+  else if (m.type === 'state') { state = m.tank;
+    if (m.combat.weapon === 'reloading' && combat?.weapon !== 'reloading') { recoilUntil = performance.now() + 160; recoilStrength = 3 + 7 * (combat?.charge ?? 0); }
+    if (m.combat.hits > (combat?.hits ?? 0)) hitUntil = performance.now() + 180;
+    if (m.combat.hp < (combat?.hp ?? 100)) hurtUntil = performance.now() + 200;
+    combat = m.combat;
+    driveStatus.dataset.hp = String(combat.hp); driveStatus.dataset.incoming = String(combat.incomingFire);
     const now = performance.now();
     tankPoses.push(m.tick, state, now);
+    combat.targets.forEach((target, index) => { const poses = targetPoses.get(index) ?? new PoseBuffer(); poses.push(m.tick, {x:target.x,y:target.y,hull:0,turret:0}, now); targetPoses.set(index, poses); });
     const liveShells = new Set(combat.shells.map(shell => shell.id));
     for (const id of shellPoses.keys()) if (!liveShells.has(id)) shellPoses.delete(id);
     for (const shell of combat.shells) { const poses = shellPoses.get(shell.id) ?? new PoseBuffer(); poses.push(m.tick, { x: shell.x, y: shell.y, hull: shell.angle, turret: shell.angle }, now); shellPoses.set(shell.id, poses); }
@@ -42,6 +50,8 @@ class Playground extends Phaser.Scene {
     gameScene = this;
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.rightButtonDown()) worker.postMessage({ type: 'weapon', action: 'cancel' }); });
+    this.input.keyboard!.addKey('R').on('down', () => { if (this.activeInput) worker.postMessage({ type: 'reset' }); });
+    this.input.keyboard!.addKey('T').on('down', () => { if (this.activeInput) worker.postMessage({ type: 'range-fire' }); });
     const fire = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     fire.on('down', () => { if (this.activeInput) worker.postMessage({ type: 'weapon', action: 'press' }); });
     fire.on('up', () => { if (this.activeInput) worker.postMessage({ type: 'weapon', action: 'release' }); });
@@ -70,7 +80,9 @@ class Playground extends Phaser.Scene {
     worker.postMessage({ type: 'input', input: { x: this.activeInput ? x : 0, y: this.activeInput ? y : 0, aim, silent: this.activeInput && this.keys.SHIFT.isDown } });
     this.hull.clear().fillStyle(0x253322).fillRoundedRect(-24, -24, 48, 48, 5).fillStyle(0x9dad7c).fillRoundedRect(-24, -20, 48, 40, 5).lineStyle(2, 0xd5e0bc).strokeRoundedRect(-24, -20, 48, 40, 5);
     this.hull.setPosition(rendered.x, rendered.y).setRotation(rendered.hull);
-    this.turret.clear().fillStyle(0xd0dcae).fillRoundedRect(0, -4, 34, 8, 3).fillCircle(0, 0, 12).lineStyle(2, 0x273a2c).strokeCircle(0, 0, 12);
+    const recoil = Math.max(0, (recoilUntil - performance.now()) / 160) * recoilStrength;
+    this.hull.setAlpha(combat?.hp === 0 ? 0.25 : 1); this.turret.setAlpha(combat?.hp === 0 ? 0.25 : 1);
+    this.turret.clear().fillStyle(0xd0dcae).fillRoundedRect(-recoil, -4, 34, 8, 3).fillCircle(0, 0, 12).lineStyle(2, 0x273a2c).strokeCircle(0, 0, 12);
     this.turret.setPosition(rendered.x, rendered.y).setRotation(rendered.turret);
     this.cursor.clear().lineStyle(2, 0xffffff, 0.85).strokeCircle(world.x, world.y, 8).lineBetween(world.x - 13, world.y, world.x + 13, world.y).lineBetween(world.x, world.y - 13, world.x, world.y + 13);
     const leadX = Phaser.Math.Clamp(pointer.x - 480, -240, 240) / 3, leadY = Phaser.Math.Clamp(pointer.y - 270, -240, 240) / 3;
@@ -78,16 +90,21 @@ class Playground extends Phaser.Scene {
     cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, rendered.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, rendered.y + leadY, blend));
     this.battle.clear();
     if (combat) {
-      for (const target of combat.targets) {
+      for (const [index, targetState] of combat.targets.entries()) {
+        const target = { ...targetState, ...targetPoses.get(index)?.sample(performance.now()) };
         if (target.hp <= 0) continue;
         this.battle.fillStyle(0xb87360).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
         this.battle.fillStyle(0x151c17).fillRect(target.x - 22, target.y - 34, 44, 5).fillStyle(0xf2bf78).fillRect(target.x - 22, target.y - 34, 44 * target.hp / 100, 5);
       }
-      for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.fillStyle(0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
+      for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.fillStyle(shell.hostile ? 0xff9177 : 0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
+      if (performance.now() < hitUntil) this.battle.lineStyle(3,0xffffff).strokeCircle(world.x,world.y,16);
+      if (performance.now() < hurtUntil) this.battle.lineStyle(4,0xff9177).strokeCircle(rendered.x,rendered.y,38);
+      if (combat.incomingFire) this.battle.lineStyle(2,0xff9177).strokeCircle(420,272,16);
+      if (performance.now() < recoilUntil - 100) this.battle.fillStyle(0xffedab).fillCircle(rendered.x + Math.cos(rendered.turret)*36,rendered.y+Math.sin(rendered.turret)*36,3+recoilStrength*0.4);
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
+    this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nHP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
 new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });
