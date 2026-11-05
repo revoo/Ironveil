@@ -31,7 +31,7 @@ it('fires only after acquiring a visible aligned target, then releases a charged
     botIntent(m.view(0), 1, trainingMap, state);
     expect(state.actions).toContain('release');
 });
-it('does not attack an enemy known by a teammate through the bots own cover', () => {
+it('can prepare behind cover but never releases a shot through its own wall', () => {
     const m = new SoloMatch(trainingMap);
     Object.assign(m.actors[1], { x: 400, y: 320, turret: 0 });
     Object.assign(m.actors[0], { x: 600, y: 400 });
@@ -40,14 +40,15 @@ it('does not attack an enemy known by a teammate through the bots own cover', ()
     botIntent(m.view(0), 1, trainingMap, s);
     m.tick = 10;
     botIntent(m.view(0), 1, trainingMap, s);
-    expect(s.actions).not.toContain('press');
+    expect(s.actions).not.toContain('release');
+    m.actors[1].cannon.advanceWeapon(m.actors[1],trainingMap,['press']);for(let i=0;i<30;i++)m.actors[1].cannon.advanceWeapon(m.actors[1],trainingMap,[]);m.tick=40;botIntent(m.view(0),1,trainingMap,s);expect(s.actions).not.toContain('release');
 });
 
-it('uses smoke to reposition at low health and investigates only historical evidence after contact breaks',()=>{
+it('uses smoke at low health and clears visibly empty historical contact positions',()=>{
  const m=new SoloMatch(trainingMap);Object.assign(m.actors[1],{x:300,y:600,hp:20});Object.assign(m.actors[2],{x:500,y:600});
  const state=newBotState(4);botIntent(m.view(0),1,trainingMap,state);expect(state.smoke).toBe(true);expect(state.mode).toBe('reposition');
  const observation=m.view(0);observation.enemies=[];observation.tick=100;observation.allies.find(a=>a.id===1)!.hp=100;observation.sightings=[{id:2,x:400,y:600,expires:190}];state.investigateUntil=0;
- botIntent(observation,1,trainingMap,state);expect(state.mode).toBe('investigate');expect(state.targetId).toBeUndefined();
+ botIntent(observation,1,trainingMap,state);expect(state.mode).toBe('navigate');expect(state.targetId).toBeUndefined();
 });
 
 it('finds a search route from the obstructed depot approach',async()=>{
@@ -62,9 +63,9 @@ it('moves to another search area after arriving instead of camping a landmark',(
 });
 
 it('resumes searching after reaching historical evidence and does not revisit the same stale contact',()=>{
- const m=new SoloMatch(trainingMap);Object.assign(m.actors[1],{x:300,y:600});const o=m.view(0);o.enemies=[];o.sightings=[{id:2,x:400,y:600,expires:90}];
+ const m=new SoloMatch(trainingMap);Object.assign(m.actors[1],{x:300,y:600});const o=m.view(0);o.enemies=[];o.sightings=[{id:2,x:900,y:600,expires:90}];
  const s=newBotState(8);botIntent(o,1,trainingMap,s);expect(s.mode).toBe('investigate');
- Object.assign(o.allies.find(a=>a.id===1)!,{x:400,y:600});o.tick=5;botIntent(o,1,trainingMap,s);
+ Object.assign(o.allies.find(a=>a.id===1)!,{x:900,y:600});o.tick=5;botIntent(o,1,trainingMap,s);
  expect(s.mode).toBe('navigate');expect(Math.hypot(s.drive.x,s.drive.y)).toBeGreaterThan(0);
  o.tick=10;botIntent(o,1,trainingMap,s);expect(s.mode).toBe('navigate');
 });

@@ -219,6 +219,7 @@ class Playground extends Phaser.Scene {
       // Destroy absent/dead contacts, so no stale sprite survives an authorized hide.
       const liveIds=new Set(soloActors.filter(a=>a.hp>0).map(a=>a.id));
       for(const [id,sprite] of this.unitSprites)if(!liveIds.has(id)){sprite.hull.destroy();sprite.turret.destroy();this.unitSprites.delete(id);}
+      let chargingContacts=0;
       for (const [index, targetState] of combat.targets.entries()) {
         const target = { ...targetState, ...targetPoses.get(index)?.sample(performance.now()) };
         if (target.hp <= 0) continue;
@@ -229,11 +230,13 @@ class Playground extends Phaser.Scene {
           if(!sprite){const skin=actor.team===0?'ally':'enemy';sprite={hull:this.add.image(0,0,'hull-'+skin).setDepth(5),turret:this.add.image(0,0,'turret-'+skin).setOrigin(1/3,.5).setDepth(5.1)};this.unitSprites.set(actor.id,sprite);}
           sprite.hull.setPosition(target.x,target.y).setRotation(pose?.hull??actor.hull);
           sprite.turret.setPosition(target.x,target.y).setRotation(pose?.turret??actor.turret);
+          if(actor.weapon==='charging'){chargingContacts++;this.battle.lineStyle(2,actor.charge>=1?0xffcf77:0xd2bf83,.85).strokeCircle(target.x,target.y,27+actor.charge*6);}
           if(actor.protection>0)this.battle.lineStyle(2,0xffffff).strokeCircle(target.x,target.y,29);
         }
         else this.battle.fillStyle(color).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
         this.battle.fillStyle(0x151c17).fillRect(target.x - 22, target.y - 34, 44, 5).fillStyle(0xf2bf78).fillRect(target.x - 22, target.y - 34, 44 * target.hp / 100, 5);
       }
+      driveStatus.dataset.chargingContacts=String(chargingContacts);
       driveStatus.dataset.enemySprites=String([...this.unitSprites.keys()].filter(id=>soloActors.find(a=>a.id===id)?.team===1).length);
       driveStatus.dataset.allySprites=String([...this.unitSprites.keys()].filter(id=>soloActors.find(a=>a.id===id)?.team===0).length);
       for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.lineStyle(1+shell.charge*2,shell.hostile?0xff9177:0xffedab,.6).lineBetween(pose.x-Math.cos(shell.angle)*(5+shell.charge*12),pose.y-Math.sin(shell.angle)*(5+shell.charge*12),pose.x,pose.y).fillStyle(shell.hostile ? 0xff9177 : 0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }

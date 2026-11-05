@@ -1,6 +1,6 @@
 # Ironveil
 
-Ironveil is a top-down tank game focused on local solo play. The **solo V1 implementation is complete and ready for the final owner playtest**. Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [solo specification audit and handoff](docs/solo-v1.md).
+Ironveil is a top-down tank game focused on local solo play. The **solo V1 implementation is complete and ready for the final owner playtest**. The 1.1 tactical AI pass adds goal/action planning, uncertain memory, coordinated roles and persistent personalities; see [the AI report](docs/tactical-ai.md). Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [solo specification audit and handoff](docs/solo-v1.md).
 
 ## Run locally
 
@@ -27,6 +27,7 @@ Missing cached content prompts restoration when online. Updates wait until all o
 - `npm run validate:map`: content validation and all authored spawn-to-search-area routes.
 - `npm run build`: strict TypeScript check and production build.
 - `npx playwright install chromium`, then `npm run test:browser`: browser acceptance and real Worker replay checks.
+- `npm run diagnostics:ai -- 10`: headless plan/behavior counts and decision timing.
 - `npm run diagnostics:solo -- 100 normal`: seeded headless matches with an idle human.
 
 `npm run dev:all` also starts the legacy Colyseus connection diagnostic on port 2567. Only `/?range=1&diagnostics=1` in development requests that connection. Production never connects to it. That development server remains local-only and is not ready for deployment. Browser tests manage dev, the diagnostic server and a production preview separately. Offline acceptance includes a full browser-process restart; the production preview is built locally as part of the suite. If deliberately testing an existing development session, `PLAYWRIGHT_REUSE_SERVER=1` allows reuse.

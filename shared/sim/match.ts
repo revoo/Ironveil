@@ -196,7 +196,7 @@ export class SoloMatch {
         });
         Object.assign(a, options[0], { hp: 100, speed: 0, vx: 0, vy: 0, respawn: 0, protection: 60, smokeReady: 0, revealUntil: 0, trackDistance: 0, lastTrack: -100, silent: false, hull: a.team === 0 ? 0 : Math.PI, turret: a.team === 0 ? 0 : Math.PI });
         a.cannon.reset();
-        this.botStates[a.id] = newBotState(a.id + 1 + this.tick + this.seed * 100);
+        this.botStates[a.id] = newBotState(a.id + 1 + this.tick + this.seed * 100,a.id+1+this.seed*100);
     }
     step(input: DriveInput = neutralInput(), actions: WeaponAction[] = [], smoke = false): void {
         if (this.paused || this.result !== null)

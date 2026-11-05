@@ -46,3 +46,8 @@ The [S6 handoff](s6.md) records personal authorized hit/destruction confirmation
 ## Solo V1 completion — final playtest pending
 
 On November 5 the owner explicitly directed completion of the entire remaining solo spec before their next playtest, keeping multiplayer deferred. This supersedes intermediate handoff gates. The [solo V1 audit](solo-v1.md) maps requirements to implementation, approved overrides, test evidence, standalone packaging and remaining human/compatibility evaluation. The implementation adds the remaining scoreboard/fullscreen/music/recovery and delivery details, hardens Worker scheduling and preserves approved gameplay. No further automatic content expansion is authorized; the completed build awaits the owner's final playtest.
+
+
+## Tactical AI refinement — solo 1.1
+
+The owner explicitly authorized the proposed tactical AI changes and an approach inspired by F.E.A.R. after the solo V1 handoff. The [AI report](tactical-ai.md) records goal/action planning, utility/commitment, cover/exposure-aware positioning, uncertain memory, team roles, persistent traits, fire judgment and observed-projectile evasion. This is the currently authorized refinement; preserve accepted tank mechanics and the perception boundary. Deliver one tested AI handoff and await owner feedback. Multiplayer remains deferred.
