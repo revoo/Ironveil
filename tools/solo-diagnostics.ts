@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { SoloMatch } from '../shared/sim/match';
-import { trainingMap } from '../shared/content';
+import {relaySmallMap as trainingMap} from '../shared/content/relay-yard';
 const count = Number(process.argv[2] ?? 100);
 if (!Number.isInteger(count) || count < 1 || count > 1000)
     throw new Error('Use 1–1000 matches');

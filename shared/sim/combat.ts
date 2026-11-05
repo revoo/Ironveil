@@ -43,6 +43,7 @@ export class CombatSandbox {
   get charge(): number { return Math.min(1, this.chargingTicks / CANNON.fullTicks); }
   get mobility(): number { return this.weapon === 'charging' ? 1 - 0.45 * this.charge : 1; }
   view(): CombatView { return { events: this.events, hp: this.hp, incomingFire: this.incomingFire, weapon: this.weapon, charge: this.weapon === 'charging' ? this.charge : 0, remainingTicks: this.weapon === 'charging' ? CANNON.fullTicks + CANNON.holdTicks - this.chargingTicks : this.timer, shells: this.shells, targets: this.targets, hits: this.hits }; }
+  recoverFromSmoke():void { if(this.weapon==='ready'||this.weapon==='charging'||this.timer<CANNON.cancelTicks){this.weapon='cancel recovery';this.timer=CANNON.cancelTicks;this.chargingTicks=0;} }
   cancel(): void { if (this.weapon === 'charging') { this.weapon = 'cancel recovery'; this.timer = CANNON.cancelTicks; this.chargingTicks = 0; } }
   advanceWeapon(tank: Tank, map: GameMap, actions: WeaponAction[]):void {
     this.events = [];

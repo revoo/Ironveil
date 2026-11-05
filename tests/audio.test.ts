@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { toneWav } from '../client/audio';
 it('creates a valid finite PCM wave with a quiet tail for each sound',()=>{
- for(const kind of ['tap','full','impact','destruction','vent'] as const) {
+ for(const kind of ['tap','full','impact','destruction','vent','engine','charge','smoke'] as const) {
   const bytes=toneWav(kind); const view=new DataView(bytes.buffer);
   expect(new TextDecoder().decode(bytes.slice(0,4))).toBe('RIFF'); expect(new TextDecoder().decode(bytes.slice(8,12))).toBe('WAVE');
   expect(view.getUint32(24,true)).toBe(22050); expect(view.getUint32(40,true)).toBe(bytes.length-44);

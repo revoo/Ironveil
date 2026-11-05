@@ -1,6 +1,6 @@
 export const TUNING = Object.freeze({ tickRate: 30, driveResponseSeconds: 0.2, coastDragSeconds: 0.55, grassSpeed: 180, tankRadius: 20, hullTurn: 660 * Math.PI / 180, turretTurn: 150 * Math.PI / 180 });
 export type Terrain = 'grass' | 'road' | 'mud' | 'brush';
-export interface GameMap { version: number; id: string; width: number; height: number; tileSize: number; terrain: Terrain[]; walls: { id: string; x: number; y: number; width: number; height: number }[] }
+export interface GameMap { version: number; id: string; width: number; height: number; tileSize: number; sites?: {id:string;x:number;y:number}[]; spawns?: [{x:number;y:number}[],{x:number;y:number}[]]; landmarks?: {id:number;name:string;x:number;y:number}[]; terrain: Terrain[]; walls: { id: string; x: number; y: number; width: number; height: number }[] }
 const width = 50, height = 30;
 const terrain: Terrain[] = Array.from({ length: width * height }, (_, i) => {
   const x = i % width, y = Math.floor(i / width);

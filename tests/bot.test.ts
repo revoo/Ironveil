@@ -42,3 +42,15 @@ it('does not attack an enemy known by a teammate through the bots own cover', ()
     botIntent(m.view(0), 1, trainingMap, s);
     expect(s.actions).not.toContain('press');
 });
+
+it('uses smoke to reposition at low health and investigates only historical evidence after contact breaks',()=>{
+ const m=new SoloMatch(trainingMap);Object.assign(m.actors[1],{x:300,y:600,hp:20});Object.assign(m.actors[2],{x:500,y:600});
+ const state=newBotState(4);botIntent(m.view(0),1,trainingMap,state);expect(state.smoke).toBe(true);expect(state.mode).toBe('reposition');
+ const observation=m.view(0);observation.enemies=[];observation.tick=100;observation.allies.find(a=>a.id===1)!.hp=100;observation.sightings=[{id:2,x:400,y:600,expires:190}];state.investigateUntil=0;
+ botIntent(observation,1,trainingMap,state);expect(state.mode).toBe('investigate');expect(state.targetId).toBeUndefined();
+});
+
+it('falls back to the relay center when its formation offset is obstructed',async()=>{
+ const {relaySmallMap}=await import('../shared/content/relay-yard');const m=new SoloMatch(relaySmallMap);Object.assign(m.actors[3],{x:790,y:400});
+ const state=newBotState(1);botIntent(m.view(1),3,relaySmallMap,state);expect(state.path.length).toBeGreaterThan(0);
+});

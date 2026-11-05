@@ -96,3 +96,8 @@ it('vent recovery lasts 24 ticks and release at the threshold cannot salvage the
  c.step(tank,map,['release']); expect(c.weapon).toBe('vent recovery'); expect(c.shells).toEqual([]);
  for(let i=0;i<23;i++) c.step(tank,map,[]); expect(c.weapon).toBe('vent recovery'); c.step(tank,map,['release']); expect(c.weapon).toBe('ready'); expect(c.shells).toEqual([]);
 });
+
+it('smoke recovery cannot shorten an existing reload but a ready cannon recovers for eight ticks',()=>{
+ const c=new CombatSandbox();c.recoverFromSmoke();expect(c.weapon).toBe('cancel recovery');for(let i=0;i<7;i++)c.advanceWeapon(tank,map,[]);expect(c.weapon).toBe('cancel recovery');c.advanceWeapon(tank,map,[]);expect(c.weapon).toBe('ready');
+ c.advanceWeapon(tank,map,['press','release']);c.recoverFromSmoke();for(let i=0;i<19;i++)c.advanceWeapon(tank,map,[]);expect(c.weapon).toBe('reloading');c.advanceWeapon(tank,map,[]);expect(c.weapon).toBe('ready');
+});

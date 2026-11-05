@@ -1,6 +1,6 @@
 # Ironveil
 
-Ironveil is a top-down tank game focused on local solo play. The current milestone is **S1: a complete local 2v2 Relay Control bot match**, awaiting owner playtest. Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [S1 handoff](docs/s1.md).
+Ironveil is a top-down tank game focused on local solo play. The current milestone is **S2: Relay Yard stealth and encounter loop**, awaiting owner playtest. Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [S2 handoff](docs/s2.md).
 
 ## Run locally
 
@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173/>. You and one bot face two enemy bots. Stand in the relay ring to score; both teams present means no scoring. Click the game to unlock audio. Use WASD to drive, mouse to aim, Space to charge/fire, right-click to cancel, Shift for slower movement, M to mute, and Escape to pause. Pause, Restart match, and results/Play again controls are also available. Switching away from the page pauses solo.
+Open <http://127.0.0.1:5173/>. You and one bot face two enemy bots. Stand in the relay ring to score; both teams present means no scoring. Click the game to unlock audio. Use WASD to drive, mouse to aim, Space to charge/fire, right-click to cancel, Shift for slower movement, M to mute, and Escape to pause, and **Q to deploy smoke**. Brush hides distant occupants; smoke blocks sight but not shells. Mud leaves temporary anonymous tracks; X markers are stale sightings and edge arcs are coarse sound cues. Pause, Restart match, and results/Play again controls are also available. Switching away from the page pauses solo.
 
 Solo runs entirely on your device in a Worker and needs no game server. Offline asset caching has not been added yet. The [training range](http://127.0.0.1:5173/?range=1) remains available; T toggles its incoming-fire lane and R resets it.
 

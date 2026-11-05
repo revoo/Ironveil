@@ -4,6 +4,19 @@ import type { GameMap } from '../content';
 import { neutralInput, type DriveInput } from './index';
 import { segmentBox, type WeaponAction } from './combat';
 export interface BotState {
+    mode?: 'navigate' | 'attack' | 'investigate' | 'reposition';
+    smoke?: boolean;
+    investigateUntil?: number;
+    investigateGoal?: {
+        x: number;
+        y: number;
+    };
+    repositionUntil?: number;
+    repositionGoal?: {
+        x: number;
+        y: number;
+    };
+    evidenceId?: string | number;
     seed: number;
     drive: DriveInput;
     actions: WeaponAction[];
@@ -29,6 +42,8 @@ export function newBotState(seed: number): BotState { return { seed, drive: neut
 export function botIntent(o: Observation, id: number, map: GameMap, s: BotState): void {
     const self = o.allies.find(a => a.id === id);
     s.actions = [];
+    s.smoke = false;
+    s.mode = 'navigate';
     if (!self || self.hp <= 0) {
         s.drive = neutralInput();
         return;
@@ -37,6 +52,7 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState)
     const enemy = o.enemies.filter(e => !map.walls.some(w => segmentBox(self.x, self.y, e.x - self.x, e.y - self.y, w) !== undefined)).sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y))[0];
     let aim = self.turret;
     if (enemy) {
+        s.mode = 'attack';
         if (s.targetId !== enemy.id) {
             s.targetId = enemy.id;
             s.acquired = o.tick;
@@ -54,9 +70,40 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState)
         if (self.weapon === 'charging')
             s.actions.push('cancel');
     }
-    const goal = { x: o.zone.x + (id % 2 ? -24 : 24), y: o.zone.y + (id % 2 ? 24 : -24) };
+    let goal = { x: o.zone.x + (id % 2 ? -24 : 24), y: o.zone.y + (id % 2 ? 24 : -24) };
+    if (enemy && self.hp <= 35 && self.smokeIn === 0) {
+        s.smoke = true;
+        s.repositionUntil = o.tick + 60;
+        const direction = Math.atan2(self.y - enemy.y, self.x - enemy.x);
+        s.repositionGoal = { x: Math.max(48, Math.min(map.width * 32 - 48, self.x + Math.cos(direction + 0.5) * 160)), y: Math.max(48, Math.min(map.height * 32 - 48, self.y + Math.sin(direction + 0.5) * 160)) };
+    }
+    if (!enemy) {
+        const sight = o.sightings.find(e => e.expires > o.tick);
+        const track = o.tracks.filter(t => t.stage === 0 && t.expires > o.tick && Math.hypot(t.x - self.x, t.y - self.y) < 250).sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y))[0];
+        const sound = o.sounds.find(s => s.expires > o.tick);
+        const evidence = sight ?? track;
+        const evidenceId = evidence?.id ?? sound?.id;
+        if (evidenceId !== undefined && evidenceId !== s.evidenceId) {
+            s.evidenceId = evidenceId;
+            s.investigateUntil = o.tick + 60;
+            s.investigateGoal = evidence ? { x: evidence.x, y: evidence.y } : { x: Math.max(48, Math.min(map.width * 32 - 48, self.x + Math.cos(sound!.sector * Math.PI / 4) * 160)), y: Math.max(48, Math.min(map.height * 32 - 48, self.y + Math.sin(sound!.sector * Math.PI / 4) * 160)) };
+        }
+        if ((s.investigateUntil ?? 0) > o.tick && s.investigateGoal) {
+            goal = s.investigateGoal;
+            s.mode = 'investigate';
+        }
+    }
+    if ((s.repositionUntil ?? 0) > o.tick && s.repositionGoal) {
+        goal = s.repositionGoal;
+        s.mode = 'reposition';
+    }
     if (!s.goal || Math.hypot(goal.x - s.goal.x, goal.y - s.goal.y) > 32 || o.tick - s.planned >= 60 || s.path.length === 0) {
         s.path = findPath(map, self, goal);
+        if (!s.path.length && Math.hypot(self.x - o.zone.x, self.y - o.zone.y) > 40) {
+            goal = { ...o.zone };
+            s.path = findPath(map, self, goal);
+            s.mode = 'navigate';
+        }
         s.goal = goal;
         s.planned = o.tick;
     }
@@ -79,5 +126,5 @@ export function botIntent(o: Observation, id: number, map: GameMap, s: BotState)
         x = 0;
         y = 0;
     }
-    s.drive = { x, y, aim, silent: false };
+    s.drive = { x, y, aim, silent: s.mode === 'investigate' && Math.hypot(self.x - goal.x, self.y - goal.y) < 160 };
 }

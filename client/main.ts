@@ -1,3 +1,4 @@
+import {relaySmallMap} from '../shared/content/relay-yard';
 import type { Observation, ActorView } from '../shared/sim/match';
 import { audioData } from './audio';
 import type { CombatEvent } from '../shared/sim/combat';
@@ -6,16 +7,17 @@ import type { CombatView } from '../shared/sim/combat';
 import Phaser from 'phaser';
 import { Client } from 'colyseus.js';
 import { currentHandshake, versionsMatch, type WorkerResponse } from '../shared/protocol';
-import { trainingMap, validateMap } from '../shared/content';
+import { trainingMap as rangeMap, validateMap } from '../shared/content';
 import { neutralInput, speedCap, terrainAt, type Tank } from '../shared/sim';
 import './style.css';
-validateMap(trainingMap);
 const rangeMode = new URLSearchParams(location.search).has('range');
+const trainingMap=rangeMode?rangeMap:relaySmallMap;validateMap(trainingMap);
 let solo: Observation | undefined;
 let soloActors: ActorView[] = [];
 let lastSoloTick = -1, targetKey = '';
 const matchStatus = document.querySelector<HTMLElement>('#match-status')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
+if(!rangeMode)document.querySelector('#mode-label')!.textContent='Relay Yard · solo 2 vs 2';
 if(rangeMode) { document.querySelector<HTMLElement>('#return-solo')!.hidden=false; document.querySelector<HTMLElement>('#match-panel')!.hidden = true; document.querySelector('#mode-label')!.textContent='Cannon laboratory · range'; }
 function pause(value:boolean):void { worker.postMessage({type:'neutralize'}); worker.postMessage({type:'pause',value}); gameScene?.clearKeys(); }
 pauseButton.onclick=()=>pause(!solo?.paused);
@@ -44,6 +46,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     lastSoloTick=solo.tick;
     soloActors=[...solo.allies.filter(a=>a.id!==0),...solo.enemies];
     const key=soloActors.map(a=>a.id).join(','); if(key!==targetKey){targetPoses.clear();targetKey=key;}
+    matchStatus.dataset.smokes=String(solo.smokes.length);matchStatus.dataset.smokeCooldown=String(me.smokeIn);matchStatus.dataset.tracks=String(solo.tracks.length);matchStatus.dataset.sightings=String(solo.sightings.length);
     matchStatus.dataset.tick=String(solo.tick); matchStatus.dataset.paused=String(solo.paused);matchStatus.dataset.allies=String(solo.allies.length);matchStatus.dataset.total='4';matchStatus.dataset.score=solo.scores.join(':');
     const result=solo.result===null?'':solo.result==='draw'?'DRAW':solo.result===0?'VICTORY':'DEFEAT';
     matchStatus.textContent=`${result || (solo.paused?'PAUSED':'RELAY CONTROL')} · Blue ${solo.scores[0]} — ${solo.scores[1]} Red · ${Math.ceil(solo.secondsLeft)}s ${solo.sudden?'SUDDEN DEATH':''} · ${solo.rotationIn<=10?'Next relay in '+Math.ceil(solo.rotationIn)+'s':''}`;
@@ -77,15 +80,20 @@ class Playground extends Phaser.Scene {
   private battle!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private fog!:Phaser.GameObjects.Graphics;
+  private smokeFx!:Phaser.GameObjects.Graphics;
+  private soundFx!:Phaser.GameObjects.Graphics;
+  private soundLabels:Phaser.GameObjects.Text[]=[];private lastSound=0;private lastFogTick=-10;private nextHum=0;private nextEngine=0;private previousSmoke=0;
   private mini!: Phaser.GameObjects.Graphics;
   private activeInput = true;
   clearKeys():void{this.input.keyboard?.resetKeys();}
   private lastEffect = 0;
   private effects: {event: CombatEvent; until:number}[] = [];
-  preload():void { for(const kind of ['tap','full','impact','destruction','vent'] as const) this.load.audio(kind,audioData(kind)); }
+  preload():void { for(const kind of ['tap','full','impact','destruction','vent','engine','charge','smoke'] as const) this.load.audio(kind,audioData(kind)); }
   constructor() { super('playground'); }
   create(): void {
     gameScene = this;
+    this.input.keyboard!.addKey('Q').on('down',(_key:Phaser.Input.Keyboard.Key,event:KeyboardEvent)=>{if(!rangeMode&&this.activeInput&&!event.repeat)worker.postMessage({type:'smoke',seq:++weaponSequence});});
     this.input.keyboard!.addKey('ESC').on('down',()=>{if(!rangeMode)pause(!solo?.paused);});
     this.input.keyboard!.addKey('M').on('down', () => { this.sound.mute = !this.sound.mute; });
     this.input.mouse?.disableContextMenu();
@@ -103,9 +111,15 @@ class Playground extends Phaser.Scene {
       ground.lineStyle(1, 0xffffff, 0.035).strokeRect(x, y, 32, 32);
     });
     for (const wall of trainingMap.walls) ground.fillStyle(0x879080).fillRect(wall.x, wall.y, wall.width, wall.height).lineStyle(2, 0xb5c3ac).strokeRect(wall.x, wall.y, wall.width, wall.height);
+    for(const l of trainingMap.landmarks??[])this.add.text(l.x,l.y,l.name.toUpperCase(),{fontFamily:'monospace',fontSize:'15px',color:'#b8c6a8'}).setOrigin(.5);
     this.hull = this.add.graphics(); this.turret = this.add.graphics(); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
-    this.mini=this.add.graphics().setScrollFactor(0);
-    this.hud = this.add.text(18, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#edf4df', backgroundColor: '#101b17cc', padding: { x: 8, y: 6 } }).setScrollFactor(0);
+    this.battle.setDepth(3);this.hull.setDepth(5);this.turret.setDepth(5);this.cursor.setDepth(6);
+    this.fog=this.add.graphics().setDepth(2);this.smokeFx=this.add.graphics().setDepth(4);this.soundFx=this.add.graphics().setScrollFactor(0).setDepth(7);
+    for(let sector=0;sector<8;sector++)this.soundLabels.push(this.add.text(0,0,'',{fontFamily:'monospace',fontSize:'12px',color:'#f1d09c',backgroundColor:'#101b17',padding:{x:4,y:2}}).setOrigin(.5).setScrollFactor(0).setDepth(7));
+    const miniGround=this.add.graphics();for(let i=0;i<trainingMap.terrain.length;i++)miniGround.fillStyle(colors[trainingMap.terrain[i]]).fillRect(i%trainingMap.width*3.2,Math.floor(i/trainingMap.width)*3.2,3.2,3.2);miniGround.generateTexture('mini-ground',160,96);miniGround.destroy();this.add.image(780,16,'mini-ground').setOrigin(0).setScrollFactor(0).setDepth(6.5);
+    for(const l of trainingMap.landmarks??[])this.add.text(780+l.x/10,16+l.y/10+6,l.name==='Radio Tower'?'RADIO':l.name==='Broken Bridge'?'BRIDGE':'DEPOT',{fontFamily:'monospace',fontSize:'9px',color:'#d8ddc4',backgroundColor:'#101b17'}).setOrigin(.5).setScrollFactor(0).setDepth(8);
+    this.mini=this.add.graphics().setScrollFactor(0).setDepth(7);
+    this.hud = this.add.text(18, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#edf4df', backgroundColor: '#101b17cc', padding: { x: 8, y: 6 } }).setScrollFactor(0).setDepth(7);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
     this.cameras.main.setBounds(0, 0, trainingMap.width * 32, trainingMap.height * 32).centerOn(160, 272);
   }
@@ -146,10 +160,22 @@ class Playground extends Phaser.Scene {
       this.battle.lineStyle(event.kind === 'destruction' ? 4 : 2,event.kind === 'vent' ? 0xa2b4ac : 0xffd99b,fade).strokeCircle(event.x,event.y,radius);
     }
     if(solo) {
+      if(solo.tick<this.lastFogTick||solo.tick-this.lastFogTick>=3||solo.paused){this.lastFogTick=solo.tick;const visible=new Set(solo.ground);this.fog.clear().fillStyle(0x08110d,0.56);for(let i=0;i<trainingMap.terrain.length;i++)if(!visible.has(i))this.fog.fillRect(i%trainingMap.width*32,Math.floor(i/trainingMap.width)*32,32,32);}
+      this.smokeFx.clear();for(const cloud of solo.smokes)this.smokeFx.fillStyle(0xa8b2a8,0.92).fillCircle(cloud.x,cloud.y,100).lineStyle(2,0xd2d7c8,0.8).strokeCircle(cloud.x,cloud.y,100);
+      for(const stamp of solo.tracks){const dx=Math.cos(stamp.axis)*9,dy=Math.sin(stamp.axis)*9,ox=Math.sin(stamp.axis)*6,oy=-Math.cos(stamp.axis)*6;this.battle.lineStyle(3,0x1b251b,[0.75,0.5,0.25][stamp.stage]).lineBetween(stamp.x-dx+ox,stamp.y-dy+oy,stamp.x+dx+ox,stamp.y+dy+oy).lineBetween(stamp.x-dx-ox,stamp.y-dy-oy,stamp.x+dx-ox,stamp.y+dy-oy);}
+      for(const sight of solo.sightings){const alpha=Math.max(0,(sight.expires-solo.tick)/90)*0.5;this.battle.lineStyle(2,0xc4b7a0,alpha).lineBetween(sight.x-10,sight.y-10,sight.x+10,sight.y+10).lineBetween(sight.x+10,sight.y-10,sight.x-10,sight.y+10);}
+      this.soundFx.clear();this.soundLabels.forEach(l=>l.setVisible(false));
+      for(const cue of solo.sounds){const angle=cue.sector*Math.PI/4,x=480+Math.cos(angle)*430,y=270+Math.sin(angle)*210;const label=this.soundLabels[cue.sector];label.setPosition(x,y).setText(cue.kind.toUpperCase()+' '+cue.band.toUpperCase()).setAlpha(cue.band==='near'?1:0.65).setVisible(true);this.soundFx.lineStyle(cue.band==='near'?4:2,0xe3bc81,0.8).strokeCircle(x,y,24);
+       if(cue.id>this.lastSound){this.lastSound=cue.id;if(!this.sound.locked)this.sound.play(cue.kind==='shot'?'tap':cue.kind,{volume:cue.band==='near'?0.1:0.045,pan:Math.cos(angle)*0.8});}
+      }
+      const me=solo.allies[0];if(me.smokeIn>this.previousSmoke+1&&!this.sound.locked)this.sound.play('smoke',{volume:0.2});this.previousSmoke=me.smokeIn;
+      if(!solo.paused&&solo.result===null&&me.hp>0&&me.speed>8&&!me.quiet&&now>this.nextEngine){this.nextEngine=now+260;if(!this.sound.locked)this.sound.play('engine',{volume:0.025});}
+      if(!solo.paused&&solo.result===null&&combat?.weapon==='charging'&&now>this.nextHum){this.nextHum=now+220;if(!this.sound.locked)this.sound.play('charge',{volume:0.035+combat.charge*0.035,rate:0.8+combat.charge*0.7});}
       this.battle.lineStyle(3,0xe3d39a).strokeCircle(solo.zone.x,solo.zone.y,90);
-      const mini=this.mini;mini.clear().fillStyle(0x101b17,0.9).fillRect(780,16,160,96).lineStyle(1,0x697566).strokeRect(780,16,160,96);
+      const mini=this.mini;mini.clear().lineStyle(1,0x697566).strokeRect(780,16,160,96);
       for(const wall of trainingMap.walls)mini.fillStyle(0x879080).fillRect(780+wall.x/10,16+wall.y/10,wall.width/10,wall.height/10);
       mini.lineStyle(1,0xe3d39a).strokeCircle(780+solo.zone.x/10,16+solo.zone.y/10,9);
+      for(const sight of solo.sightings){const x=780+sight.x/10,y=16+sight.y/10;mini.lineStyle(1,0xc4b7a0,0.5).lineBetween(x-3,y-3,x+3,y+3).lineBetween(x+3,y-3,x-3,y+3);}
       for(const a of [...solo.allies,...solo.enemies])if(a.hp>0){mini.fillStyle(a.team===0?0x87c9e8:0xf49f89);const x=780+a.x/10,y=16+a.y/10;if(a.team===0)mini.fillCircle(x,y,a.id===0?3:2);else mini.fillTriangle(x,y-3,x-3,y+2,x+3,y+2);}
     }
     if (combat) {
@@ -170,7 +196,7 @@ class Playground extends Phaser.Scene {
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    if(solo){this.hud.setText(`WASD DRIVE · MOUSE AIM · SPACE FIRE · RMB CANCEL\nHP ${combat?.hp ?? 100} ${combat?.hp===0?'RESPAWN '+((solo.allies[0].respawn)/30).toFixed(1)+'s':''} · SHIFT QUIET · M SOUND · ESC PAUSE\n${combat?.weapon==='charging'&&combat.charge>=1?'FULL — RELEASE BEFORE VENT':combat?.weapon??'ready'} ${Math.round((combat?.charge??0)*100)}% · ${((combat?.remainingTicks??0)/30).toFixed(2)}s\nRELAY ${Math.round(Math.hypot(solo.zone.x-state.x,solo.zone.y-state.y))} px · STAND IN THE RING TO SCORE`);return;}
+    if(solo){this.hud.setText(`WASD DRIVE · MOUSE AIM · SPACE FIRE · RMB CANCEL\nHP ${combat?.hp ?? 100} ${solo.allies[0].quiet?'QUIET MOVEMENT':''} ${solo.allies[0].revealed?'FIRING REVEAL':''} ${combat?.hp===0?'RESPAWN '+((solo.allies[0].respawn)/30).toFixed(1)+'s':''} · SHIFT QUIET · M SOUND · ESC PAUSE\nQ SMOKE ${solo.allies[0].smokeIn>0?(solo.allies[0].smokeIn/30).toFixed(1)+'s':'READY'} · X = LAST SEEN\n${combat?.weapon==='charging'&&combat.charge>=1?'FULL — RELEASE BEFORE VENT':combat?.weapon??'ready'} ${Math.round((combat?.charge??0)*100)}% · ${((combat?.remainingTicks??0)/30).toFixed(2)}s\nRELAY ${Math.round(Math.hypot(solo.zone.x-state.x,solo.zone.y-state.y))} px · STAND IN THE RING TO SCORE`);return;}
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }

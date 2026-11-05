@@ -1,6 +1,6 @@
 /** Original deterministic placeholder effects, generated as mono 16-bit PCM. */
-export function toneWav(kind:'tap'|'full'|'impact'|'destruction'|'vent'):Uint8Array {
- const settings={tap:[0.12,180],full:[0.3,95],impact:[0.1,280],destruction:[0.4,65],vent:[0.25,400]} as const;
+export function toneWav(kind:'tap'|'full'|'impact'|'destruction'|'vent'|'engine'|'charge'|'smoke'):Uint8Array {
+ const settings={tap:[0.12,180],full:[0.3,95],impact:[0.1,280],destruction:[0.4,65],vent:[0.25,400],engine:[0.1,65],charge:[0.2,400],smoke:[0.2,130]} as const;
  const [duration,frequency]=settings[kind], rate=22050, samples=Math.ceil(duration*rate);
  const bytes=new Uint8Array(44+samples*2), v=new DataView(bytes.buffer);
  const text=(offset:number,value:string)=>{for(let i=0;i<value.length;i++) bytes[offset+i]=value.charCodeAt(i);};

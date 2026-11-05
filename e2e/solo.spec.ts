@@ -18,7 +18,7 @@ test('solo needs no server and visibility loss auto-pauses',async({page})=>{
 });
 
 test('shared early steps remain close and both runtimes finish a match',async({page})=>{
- const {SoloMatch}=await import('../shared/sim/match');const {trainingMap}=await import('../shared/content');
+ const {SoloMatch}=await import('../shared/sim/match');const {relaySmallMap:trainingMap}=await import('../shared/content/relay-yard');
  const match=new SoloMatch(trainingMap,17);const history:number[][][]=[];for(let i=0;i<14400&&match.result===null;i++){match.step();if(i<300)history.push(match.actors.map(a=>[a.x,a.y,a.hull,a.turret,a.hp]));}
  await page.goto('/');
  const result=await page.evaluate(async()=>{
@@ -33,7 +33,7 @@ test('shared early steps remain close and both runtimes finish a match',async({p
 });
 
 test('result presentation shows the final score and Play again resets it',async({page})=>{
- const {SoloMatch}=await import('../shared/sim/match');const {trainingMap}=await import('../shared/content');
+ const {SoloMatch}=await import('../shared/sim/match');const {relaySmallMap:trainingMap}=await import('../shared/content/relay-yard');
  const match=new SoloMatch(trainingMap);const initial=match.view(0);match.botsEnabled=false;match.scores=[180,20];match.step();const final=match.view(0);
  // A controlled Worker fixture verifies the presentation contract; rules and real Worker execution are tested separately.
  await page.addInitScript(({initial,final})=>{
@@ -53,4 +53,11 @@ test('resuming a held Space requires a fresh press after recovery',async({page})
  await page.getByRole('button',{name:'Pause'}).click();await page.getByRole('button',{name:'Resume'}).click();
  await page.waitForTimeout(400);await page.keyboard.down('Space');await page.waitForTimeout(100);
  expect(await status.getAttribute('data-weapon')).toBe('ready');await page.keyboard.up('Space');await page.keyboard.down('Space');await expect(status).toHaveAttribute('data-weapon','charging');await page.keyboard.up('Space');
+});
+
+test('Q deploys smoke once, shows its cooldown, and pause freezes its lifetime',async({page})=>{
+ await page.goto('/');const status=page.locator('#match-status');await expect(status).toHaveAttribute('data-smokes','0');
+ await page.keyboard.press('q');await expect(status).toHaveAttribute('data-smokes','1');await expect.poll(async()=>Number(await status.getAttribute('data-smoke-cooldown'))).toBeGreaterThan(500);
+ await page.keyboard.press('q');await expect(status).toHaveAttribute('data-smokes','1');await page.getByRole('button',{name:'Pause'}).click();
+ const cooldown=await status.getAttribute('data-smoke-cooldown');await page.waitForTimeout(250);await expect(status).toHaveAttribute('data-smoke-cooldown',cooldown!);
 });
