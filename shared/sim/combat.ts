@@ -44,7 +44,7 @@ export class CombatSandbox {
   get mobility(): number { return this.weapon === 'charging' ? 1 - 0.45 * this.charge : 1; }
   view(): CombatView { return { events: this.events, hp: this.hp, incomingFire: this.incomingFire, weapon: this.weapon, charge: this.weapon === 'charging' ? this.charge : 0, remainingTicks: this.weapon === 'charging' ? CANNON.fullTicks + CANNON.holdTicks - this.chargingTicks : this.timer, shells: this.shells, targets: this.targets, hits: this.hits }; }
   cancel(): void { if (this.weapon === 'charging') { this.weapon = 'cancel recovery'; this.timer = CANNON.cancelTicks; this.chargingTicks = 0; } }
-  step(tank: Tank, map: GameMap, actions: WeaponAction[], oldTank: {x:number;y:number} = tank): void {
+  advanceWeapon(tank: Tank, map: GameMap, actions: WeaponAction[]):void {
     this.events = [];
     if (this.hp <= 0) actions = [];
     if (this.incomingFire && ++this.rangeTicks % 90 === 0) this.shells.push({id:this.nextId++,x:420,y:272,angle:Math.PI,speed:400,damage:22,remaining:900,charge:0,hostile:true});
@@ -64,6 +64,9 @@ export class CombatSandbox {
         this.weapon = 'reloading'; this.timer = CANNON.reloadTicks;
       }
     }
+  }
+  step(tank: Tank, map: GameMap, actions: WeaponAction[], oldTank: {x:number;y:number} = tank): void {
+    this.advanceWeapon(tank,map,actions);
     const previous = new Map(this.targets.map(target => [target, { x: target.x, y: target.y }]));
     for (const target of this.targets) {
       if (target.hp <= 0) continue;

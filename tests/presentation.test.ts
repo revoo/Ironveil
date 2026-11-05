@@ -18,3 +18,5 @@ it('holds the latest position during stalls and resets after a long gap', () => 
 it('ignores duplicate and older snapshots', () => {
   const b = new PoseBuffer(); b.push(2, pose(10), 0); b.push(1, pose(999), 10); b.push(2, pose(999), 20); expect(b.sample(30)?.x).toBe(10);
 });
+
+it('snaps teleports instead of drawing through the map',()=>{const b=new PoseBuffer();b.push(1,pose(0),0);b.push(2,pose(1000),34);expect(b.sample(40)?.x).toBe(1000);});

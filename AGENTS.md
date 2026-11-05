@@ -17,6 +17,6 @@ Use local checks during development. GitHub CI is manually triggered for substan
 
 ## Active roadmap and playtest cadence
 
-The owner deferred multiplayer on November 4, 2026 to prioritize a fun solo game. Follow docs/roadmap.md over the original milestone order. Next is S1, a complete Worker-hosted local bot battle. Do not expand online infrastructure until the owner reactivates that scope. Preserve shared rules and explicit observation boundaries.
+The owner deferred multiplayer on November 4, 2026 to prioritize a fun solo game. Follow docs/roadmap.md over the original milestone order. S1, the complete Worker-hosted local bot battle, is implemented and awaiting owner playtest (docs/s1.md). Resolve its feedback before expanding S2 gameplay/content. Do not expand online infrastructure until the owner reactivates that scope. Preserve shared rules and explicit observation boundaries.
 
 Finish and locally verify a whole milestone before handing it to the owner for playtest. Do not request playtests for intermediate implementation slices. Human gates require recorded feedback; the M2 Gate A approval is provisional and does not validate future solo or multiplayer encounters.

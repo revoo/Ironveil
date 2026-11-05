@@ -1,3 +1,4 @@
+import type { Observation, ActorView } from '../shared/sim/match';
 import { audioData } from './audio';
 import type { CombatEvent } from '../shared/sim/combat';
 import { PoseBuffer } from './presentation';
@@ -9,10 +10,23 @@ import { trainingMap, validateMap } from '../shared/content';
 import { neutralInput, speedCap, terrainAt, type Tank } from '../shared/sim';
 import './style.css';
 validateMap(trainingMap);
+const rangeMode = new URLSearchParams(location.search).has('range');
+let solo: Observation | undefined;
+let soloActors: ActorView[] = [];
+let lastSoloTick = -1, targetKey = '';
+const matchStatus = document.querySelector<HTMLElement>('#match-status')!;
+const pauseButton = document.querySelector<HTMLButtonElement>('#pause')!;
+if(rangeMode) { document.querySelector<HTMLElement>('#return-solo')!.hidden=false; document.querySelector<HTMLElement>('#match-panel')!.hidden = true; document.querySelector('#mode-label')!.textContent='Cannon laboratory · range'; }
+function pause(value:boolean):void { worker.postMessage({type:'neutralize'}); worker.postMessage({type:'pause',value}); gameScene?.clearKeys(); }
+pauseButton.onclick=()=>pause(!solo?.paused);
+const restart=()=>{worker.postMessage({type:'reset'});gameScene?.clearKeys();};
+document.querySelector<HTMLButtonElement>('#restart')!.onclick=restart;
+document.querySelector<HTMLButtonElement>('#play-again')!.onclick=restart;
+
 const workerStatus = document.querySelector('#worker-status')!;
 const driveStatus = document.querySelector<HTMLElement>('#drive-status')!;
 const worker = new Worker(new URL('./solo-worker/worker.ts', import.meta.url), { type: 'module' });
-const tankPoses = new PoseBuffer();
+let tankPoses = new PoseBuffer();
 const targetPoses = new Map<number, PoseBuffer>();
 let recoilUntil = 0, recoilStrength = 0, hitUntil = 0, hurtUntil = 0;
 const shellPoses = new Map<number, PoseBuffer>();
@@ -22,8 +36,23 @@ let weaponSequence = 0;
 function weapon(action: 'press'|'release'|'cancel'):void { worker.postMessage({type:'weapon', seq:++weaponSequence, action}); }
 let gameScene: Playground | undefined;
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-  const m = event.data;
-  if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start' }); }
+  let m = event.data;
+  if(m.type === 'match') {
+    solo=m.observation;
+    const me=solo.allies.find(a=>a.id===0)!;
+    if(solo.tick < lastSoloTick) { tankPoses=new PoseBuffer();targetPoses.clear();shellPoses.clear(); }
+    lastSoloTick=solo.tick;
+    soloActors=[...solo.allies.filter(a=>a.id!==0),...solo.enemies];
+    const key=soloActors.map(a=>a.id).join(','); if(key!==targetKey){targetPoses.clear();targetKey=key;}
+    matchStatus.dataset.tick=String(solo.tick); matchStatus.dataset.paused=String(solo.paused);matchStatus.dataset.allies=String(solo.allies.length);matchStatus.dataset.total='4';matchStatus.dataset.score=solo.scores.join(':');
+    const result=solo.result===null?'':solo.result==='draw'?'DRAW':solo.result===0?'VICTORY':'DEFEAT';
+    matchStatus.textContent=`${result || (solo.paused?'PAUSED':'RELAY CONTROL')} · Blue ${solo.scores[0]} — ${solo.scores[1]} Red · ${Math.ceil(solo.secondsLeft)}s ${solo.sudden?'SUDDEN DEATH':''} · ${solo.rotationIn<=10?'Next relay in '+Math.ceil(solo.rotationIn)+'s':''}`;
+    pauseButton.textContent=solo.paused?'Resume':'Pause'; pauseButton.disabled=solo.result!==null;
+    document.querySelector<HTMLElement>('#results')!.hidden=solo.result===null;
+    document.querySelector('#result-title')!.textContent=result;document.querySelector('#result-summary')!.textContent=`Final score: Blue ${solo.scores[0]} — ${solo.scores[1]} Red. Kills create openings; holding the relay wins.`;
+    m={type:'state',tick:solo.tick,tank:me,combat:{hp:me.hp,incomingFire:false,weapon:me.weapon,charge:me.charge,remainingTicks:me.remainingTicks,hits:0,shells:solo.shells,events:solo.events,targets:soloActors.map(a=>({...a,reset:a.respawn}))}};
+  }
+  if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start', mode:rangeMode?'range':'solo' }); }
   else if (m.type === 'state') { state = m.tank;
     if (m.combat.weapon === 'reloading' && combat?.weapon !== 'reloading') { recoilUntil = performance.now() + 160; recoilStrength = 3 + 7 * (combat?.charge ?? 0); }
     if (m.combat.hits > (combat?.hits ?? 0)) hitUntil = performance.now() + 180;
@@ -32,7 +61,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     driveStatus.dataset.hp = String(combat.hp); driveStatus.dataset.incoming = String(combat.incomingFire);
     const now = performance.now();
     tankPoses.push(m.tick, state, now);
-    combat.targets.forEach((target, index) => { const poses = targetPoses.get(index) ?? new PoseBuffer(); poses.push(m.tick, {x:target.x,y:target.y,hull:0,turret:0}, now); targetPoses.set(index, poses); });
+    combat.targets.forEach((target, index) => { const poses = targetPoses.get(index) ?? new PoseBuffer(); poses.push(m.tick, {x:target.x,y:target.y,hull:soloActors[index]?.hull??0,turret:soloActors[index]?.turret??0}, now); targetPoses.set(index, poses); });
     const liveShells = new Set(combat.shells.map(shell => shell.id));
     for (const id of shellPoses.keys()) if (!liveShells.has(id)) shellPoses.delete(id);
     for (const shell of combat.shells) { const poses = shellPoses.get(shell.id) ?? new PoseBuffer(); poses.push(m.tick, { x: shell.x, y: shell.y, hull: shell.angle, turret: shell.angle }, now); shellPoses.set(shell.id, poses); }
@@ -48,20 +77,23 @@ class Playground extends Phaser.Scene {
   private battle!: Phaser.GameObjects.Graphics;
   private hud!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private mini!: Phaser.GameObjects.Graphics;
   private activeInput = true;
+  clearKeys():void{this.input.keyboard?.resetKeys();}
   private lastEffect = 0;
   private effects: {event: CombatEvent; until:number}[] = [];
   preload():void { for(const kind of ['tap','full','impact','destruction','vent'] as const) this.load.audio(kind,audioData(kind)); }
   constructor() { super('playground'); }
   create(): void {
     gameScene = this;
+    this.input.keyboard!.addKey('ESC').on('down',()=>{if(!rangeMode)pause(!solo?.paused);});
     this.input.keyboard!.addKey('M').on('down', () => { this.sound.mute = !this.sound.mute; });
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.rightButtonDown()) weapon('cancel'); });
     this.input.keyboard!.addKey('R').on('down', () => { if (this.activeInput) worker.postMessage({ type: 'reset' }); });
-    this.input.keyboard!.addKey('T').on('down', () => { if (this.activeInput) worker.postMessage({ type: 'range-fire' }); });
+    this.input.keyboard!.addKey('T').on('down', () => { if (rangeMode && this.activeInput) worker.postMessage({ type: 'range-fire' }); });
     const fire = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    fire.on('down', () => { if (this.activeInput) weapon('press'); });
+    fire.on('down', (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => { if (this.activeInput && !event.repeat) weapon('press'); });
     fire.on('up', () => { if (this.activeInput) weapon('release'); });
     const colors = { grass: 0x263a30, road: 0x696453, mud: 0x594a37, brush: 0x40593a };
     const ground = this.add.graphics();
@@ -72,6 +104,7 @@ class Playground extends Phaser.Scene {
     });
     for (const wall of trainingMap.walls) ground.fillStyle(0x879080).fillRect(wall.x, wall.y, wall.width, wall.height).lineStyle(2, 0xb5c3ac).strokeRect(wall.x, wall.y, wall.width, wall.height);
     this.hull = this.add.graphics(); this.turret = this.add.graphics(); this.cursor = this.add.graphics(); this.battle = this.add.graphics();
+    this.mini=this.add.graphics().setScrollFactor(0);
     this.hud = this.add.text(18, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#edf4df', backgroundColor: '#101b17cc', padding: { x: 8, y: 6 } }).setScrollFactor(0);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
     this.cameras.main.setBounds(0, 0, trainingMap.width * 32, trainingMap.height * 32).centerOn(160, 272);
@@ -112,11 +145,21 @@ class Playground extends Phaser.Scene {
       const radius=event.kind === 'destruction' ? 22+(1-fade)*20 : 4+(1-fade)*(12+event.charge*10);
       this.battle.lineStyle(event.kind === 'destruction' ? 4 : 2,event.kind === 'vent' ? 0xa2b4ac : 0xffd99b,fade).strokeCircle(event.x,event.y,radius);
     }
+    if(solo) {
+      this.battle.lineStyle(3,0xe3d39a).strokeCircle(solo.zone.x,solo.zone.y,90);
+      const mini=this.mini;mini.clear().fillStyle(0x101b17,0.9).fillRect(780,16,160,96).lineStyle(1,0x697566).strokeRect(780,16,160,96);
+      for(const wall of trainingMap.walls)mini.fillStyle(0x879080).fillRect(780+wall.x/10,16+wall.y/10,wall.width/10,wall.height/10);
+      mini.lineStyle(1,0xe3d39a).strokeCircle(780+solo.zone.x/10,16+solo.zone.y/10,9);
+      for(const a of [...solo.allies,...solo.enemies])if(a.hp>0){mini.fillStyle(a.team===0?0x87c9e8:0xf49f89);const x=780+a.x/10,y=16+a.y/10;if(a.team===0)mini.fillCircle(x,y,a.id===0?3:2);else mini.fillTriangle(x,y-3,x-3,y+2,x+3,y+2);}
+    }
     if (combat) {
       for (const [index, targetState] of combat.targets.entries()) {
         const target = { ...targetState, ...targetPoses.get(index)?.sample(performance.now()) };
         if (target.hp <= 0) continue;
-        this.battle.fillStyle(0xb87360).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
+        const actor=soloActors[index], pose=targetPoses.get(index)?.sample(now);
+        const color=actor?.team===0?0x87c9e8:0xb87360;
+        if(actor){const angle=pose?.hull??actor.hull,cos=Math.cos(angle),sin=Math.sin(angle);const corners=[[-24,-20],[24,-20],[24,20],[-24,20]].map(([x,y])=>({x:target.x+x*cos-y*sin,y:target.y+x*sin+y*cos}));this.battle.fillStyle(color).fillPoints(corners,true); const bearing=pose?.turret??actor.turret;this.battle.lineStyle(7,0xe5dfbf).lineBetween(target.x,target.y,target.x+Math.cos(bearing)*32,target.y+Math.sin(bearing)*32);if(actor.protection>0)this.battle.lineStyle(2,0xffffff).strokeCircle(target.x,target.y,29);if(actor.team===0)this.battle.lineStyle(2,0xffffff).lineBetween(target.x-5,target.y,target.x+5,target.y).lineBetween(target.x,target.y-5,target.x,target.y+5);else this.battle.lineStyle(2,0xffffff).strokeTriangle(target.x,target.y-6,target.x-6,target.y+4,target.x+6,target.y+4);}
+        else this.battle.fillStyle(color).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
         this.battle.fillStyle(0x151c17).fillRect(target.x - 22, target.y - 34, 44, 5).fillStyle(0xf2bf78).fillRect(target.x - 22, target.y - 34, 44 * target.hp / 100, 5);
       }
       for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.fillStyle(shell.hostile ? 0xff9177 : 0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
@@ -127,16 +170,18 @@ class Playground extends Phaser.Scene {
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
+    if(solo){this.hud.setText(`WASD DRIVE · MOUSE AIM · SPACE FIRE · RMB CANCEL\nHP ${combat?.hp ?? 100} ${combat?.hp===0?'RESPAWN '+((solo.allies[0].respawn)/30).toFixed(1)+'s':''} · SHIFT QUIET · M SOUND · ESC PAUSE\n${combat?.weapon==='charging'&&combat.charge>=1?'FULL — RELEASE BEFORE VENT':combat?.weapon??'ready'} ${Math.round((combat?.charge??0)*100)}% · ${((combat?.remainingTicks??0)/30).toFixed(2)}s\nRELAY ${Math.round(Math.hypot(solo.zone.x-state.x,solo.zone.y-state.y))} px · STAND IN THE RING TO SCORE`);return;}
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
 new Phaser.Game({ type: Phaser.AUTO, parent: 'game', width: 960, height: 540, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, scene: Playground, backgroundColor: '#263a30' });
 window.addEventListener('blur', () => gameScene?.neutralize());
 window.addEventListener('focus', () => gameScene?.reactivate());
-document.addEventListener('visibilitychange', () => { if (document.hidden) gameScene?.neutralize(); else gameScene?.reactivate(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { gameScene?.neutralize(); if(!rangeMode)pause(true); } else gameScene?.reactivate(); });
 const serverStatus = document.querySelector('#server-status')!;
 const endpoint = import.meta.env.VITE_SERVER_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`;
-new Client(endpoint).joinOrCreate('foundation', currentHandshake()).then(room => {
+if(!rangeMode)serverStatus.textContent='Solo runs entirely on this device.';
+else new Client(endpoint).joinOrCreate('foundation', currentHandshake()).then(room => {
   room.onMessage('welcome', (message: unknown) => { serverStatus.textContent = versionsMatch(message) ? 'Development server connected · versions match' : 'Server version mismatch'; if (!versionsMatch(message)) void room.leave(); });
   room.onLeave(() => { serverStatus.textContent = 'Development server disconnected. Reload to reconnect.'; });
 }).catch(() => { serverStatus.textContent = 'Development server unavailable or incompatible. Start it and reload.'; });

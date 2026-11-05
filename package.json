@@ -7,13 +7,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -k -n server,client 'npm:dev:server' 'npm:dev:client'",
+    "dev": "npm run dev:client",
     "dev:client": "vite --host 127.0.0.1",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "validate:map": "node --import tsx tools/validate-map.ts",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "dev:all": "concurrently -k -n server,client 'npm:dev:server' 'npm:dev:client'",
+    "diagnostics:solo": "node --import tsx tools/solo-diagnostics.ts"
   },
   "dependencies": {
     "@colyseus/core": "0.16.24",

@@ -7,7 +7,7 @@ export class PoseBuffer {
   private latest?: Snapshot;
   push(tick: number, pose: Pose, now: number): void {
     if (this.latest && tick <= this.latest.tick) return;
-    this.previous = this.latest && now - this.latest.received < 250 ? this.latest : undefined;
+    this.previous = this.latest && now - this.latest.received < 250 && Math.hypot(pose.x-this.latest.pose.x,pose.y-this.latest.pose.y)<180 ? this.latest : undefined;
     this.latest = { tick, pose: { ...pose }, received: now };
   }
   sample(now: number): Pose | undefined {

@@ -6,9 +6,9 @@ The owner explicitly deferred multiplayer to focus on making a fun game first. T
 
 M0 and M1 are complete; M2 is implemented with Gate A passed for now by owner feedback. Preserve that movement/combat baseline. Existing Colyseus scaffolding can remain, but do not expand rooms, matchmaking, prediction/reconciliation, reconnect, VPS deployment or network-load tooling during the solo phase.
 
-## Next milestone: S1 — a complete local bot battle
+## Current milestone: S1 — a complete local bot battle (implemented; awaiting playtest)
 
-Build an end-to-end Worker-hosted solo match: default player plus allied bot versus two enemy bots, a minimal Relay Control objective, team-safe combat, HP/death/respawn, score/time/result, and pause/restart. Use the training/gray-box layout and existing placeholder presentation. Bots use the same control intents and combat rules as the human. Their decision interface receives team-authorized observations and map/objective data, not the full simulation. Start with one normal behavior preset; three presets follow after behavior is worth tuning.
+Implementation and local verification are recorded in [the S1 handoff](s1.md); owner playtest is pending. Scope: an end-to-end Worker-hosted solo match: default player plus allied bot versus two enemy bots, a minimal Relay Control objective, team-safe combat, HP/death/respawn, score/time/result, and pause/restart. Use the training/gray-box layout and existing placeholder presentation. Bots use the same control intents and combat rules as the human. Their decision interface receives team-authorized observations and map/objective data, not the full simulation. Start with one normal behavior preset; three presets follow after behavior is worth tuning.
 
 Bring forward only the bot/navigation and minimal match rules needed for this playable milestone. No second weapon, special mechanics, polished art or online systems. Write behavior tests before implementation, including team damage, respawn/scoring order, fair bot observations, navigation, pause and lifecycle. Deliver one runnable milestone and request owner playtest at completion, rather than after intermediate slices.
 

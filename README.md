@@ -1,22 +1,30 @@
 # Ironveil
 
-Ironveil is a top-down tank game in early development, currently focused on local solo play; multiplayer is deferred. The current build is an early cannon laboratory, not yet a complete game.
-
-See the [current roadmap](docs/roadmap.md) for the solo-first milestone order.
+Ironveil is a top-down tank game focused on local solo play. The current milestone is **S1: a complete local 2v2 Relay Control bot match**, awaiting owner playtest. Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [S1 handoff](docs/s1.md).
 
 ## Run locally
 
-Install Node.js 20 or newer, then:
+Use Node.js 20 or newer:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173/>. The page should show a movement playground, a Worker simulation at tick 30, and a connected development server. Click the game and use WASD to drive, the mouse to aim, and Shift for silent running. Hold/release Space to charge/fire; right mouse cancels. Orange targets show damage and reset after destruction; the southern target patrols. Press T to toggle the marked incoming-fire test lane and R to reset the range and your HP. Press M to mute effects. See the [M2 Gate A handoff](docs/m2.md) for the milestone playtest. Stop both processes with Ctrl+C. The development server listens on port 2567; `VITE_SERVER_URL` can override the client endpoint. This server is for local development only and is not ready for public deployment.
+Open <http://127.0.0.1:5173/>. You and one bot face two enemy bots. Stand in the relay ring to score; both teams present means no scoring. Click the game to unlock audio. Use WASD to drive, mouse to aim, Space to charge/fire, right-click to cancel, Shift for slower movement, M to mute, and Escape to pause. Pause, Restart match, and results/Play again controls are also available. Switching away from the page pauses solo.
 
-Other commands: `npm test`, `npm run validate:map`, and `npm run build`. For browser tests, run `npx playwright install chromium` once, then `npm run test:browser`.
+Solo runs entirely on your device in a Worker and needs no game server. Offline asset caching has not been added yet. The [training range](http://127.0.0.1:5173/?range=1) remains available; T toggles its incoming-fire lane and R resets it.
 
-CI is manually triggered from GitHub Actions for substantial checkpoints and release validation. Routine verification runs locally; pushes and pull requests do not start CI automatically.
+## Verify locally
 
-Shared rules and content live in `shared/`; the Phaser client and Worker live in `client/`; the Colyseus adapter lives in `server/`. The shared code has no browser, Phaser, or transport dependencies. See [the M0 report](docs/m0.md) for decisions, verification, and outstanding work.
+- `npm test`: simulation, collision, lifecycle, visibility, bots and navigation tests.
+- `npm run validate:map`: content validation and all spawn-to-relay routes.
+- `npm run build`: strict TypeScript check and production build.
+- `npx playwright install chromium`, then `npm run test:browser`: browser acceptance and real Worker replay checks.
+- `npm run diagnostics:solo -- 100`: seeded headless matches with an idle human.
+
+`npm run dev:all` also starts the legacy Colyseus connection diagnostic on port 2567. That development server remains local-only and is not ready for deployment. Browser tests start both adapters to retain the earlier foundation checks. If deliberately testing an existing development session, `PLAYWRIGHT_REUSE_SERVER=1` allows reuse.
+
+CI is manually triggered for substantial checkpoints and release validation. Routine verification runs locally; pushes and pull requests do not start CI automatically.
+
+Shared rules and content live in `shared/`; Phaser presentation and the solo Worker live in `client/`; the deferred Colyseus adapter lives in `server/`. Shared simulation has no browser, Phaser or transport dependencies. The [asset inventory](docs/assets.md) lists procedural placeholders and their licenses. See milestone reports for known limitations; automated checks do not establish game enjoyment.

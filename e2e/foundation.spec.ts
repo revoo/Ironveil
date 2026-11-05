@@ -3,7 +3,7 @@ import { Client } from 'colyseus.js';
 import { currentHandshake } from '../shared/protocol';
 
 test('browser starts the shared worker and connects to the server', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?range=1');
   await expect(page.locator('#worker-status')).toContainText('tick 30 (1.00 s)');
   await expect(page.locator('#server-status')).toContainText('connected · versions match');
   await expect(page.locator('canvas')).toBeVisible();
@@ -19,7 +19,7 @@ test('server rejects mismatched protocol and content versions', async () => {
 
 
 test('driving stops after focus is lost', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?range=1');
   const status = page.locator('#drive-status');
   await expect(status).toHaveAttribute('data-x', /.+/);
   const initial = Number(await status.getAttribute('data-x'));
@@ -36,7 +36,7 @@ test('driving stops after focus is lost', async ({ page }) => {
 
 
 test('Space tap damages a target through Worker authority', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?range=1');
   const status = page.locator('#drive-status');
   await expect(status).toHaveAttribute('data-weapon', 'ready');
   const box = await page.locator('canvas').boundingBox();
@@ -49,7 +49,7 @@ test('Space tap damages a target through Worker authority', async ({ page }) => 
 
 
 test('Space holds charge, right click cancels, and left click does not fire', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?range=1');
   const status = page.locator('#drive-status');
   await expect(status).toHaveAttribute('data-weapon', 'ready');
   await page.locator('canvas').click();
@@ -64,7 +64,7 @@ test('Space holds charge, right click cancels, and left click does not fire', as
 });
 
 test('range reset clears damage and toggled incoming training fire', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?range=1');
   const status = page.locator('#drive-status');
   await expect(status).toHaveAttribute('data-hp','100');
   await page.keyboard.press('t');
@@ -77,14 +77,14 @@ test('range reset clears damage and toggled incoming training fire', async ({ pa
 });
 
 test('sound unlocks on interaction and mute can be toggled', async ({page}) => {
- await page.goto('/'); const status=page.locator('#drive-status');
+ await page.goto('/?range=1'); const status=page.locator('#drive-status');
  await page.locator('canvas').click();
  await expect(status).toHaveAttribute('data-audio-ready','true');
  await page.keyboard.press('m'); await expect(status).toHaveAttribute('data-muted','true');
  await page.keyboard.press('m'); await expect(status).toHaveAttribute('data-muted','false');
 });
 test('losing focus while charging cancels without firing', async ({page}) => {
- await page.goto('/'); const status=page.locator('#drive-status');
+ await page.goto('/?range=1'); const status=page.locator('#drive-status');
  await expect(status).toHaveAttribute('data-weapon','ready'); await page.keyboard.down('Space');
  await expect(status).toHaveAttribute('data-weapon','charging');
  await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
