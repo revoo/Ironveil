@@ -33,7 +33,9 @@ export interface ActorView extends Tank {
     charge: number;
     remainingTicks: number;
 }
+export interface CombatCue {id:number;kind:'hit'|'kill'|'damage';expires:number;sector?:number}
 export interface Observation {
+    feedback: CombatCue[];
     difficulty:Difficulty;
     smokes: Smoke[];
     tracks: Track[];
@@ -54,6 +56,7 @@ export interface Observation {
     events: CombatEvent[];
 }
 export interface MatchShell extends Shell {
+    owner?:number;
     team: Team;
 }
 export function clearSight(map: GameMap, a: {
@@ -64,6 +67,14 @@ export function clearSight(map: GameMap, a: {
     y: number;
 }): boolean { return !map.walls.some(w => segmentBox(a.x, a.y, b.x - a.x, b.y - a.y, w) !== undefined); }
 export class SoloMatch {
+    private feedback: {recipient:number;cue:CombatCue}[] = [];
+    private nextCue = 1;
+    private eventTeams = new Map<number,Team[]>();
+    private cue(recipient:number,kind:CombatCue['kind'],sector?:number):void {
+        const cue:CombatCue={id:this.nextCue++,kind,expires:this.tick+31};
+        if(sector!==undefined)cue.sector=sector;
+        this.feedback.push({recipient,cue});this.feedback=this.feedback.slice(-32);
+    }
     smokes: Smoke[] = [];
     tracks: Track[] = [];
     private rawSounds: RawSound[] = [];
@@ -141,7 +152,7 @@ export class SoloMatch {
     constructor(readonly map: GameMap, readonly seed = 1,public difficulty:Difficulty='normal') { this.restart(); }
     get sites() { return this.map.sites ?? SOLO_LAYOUT.sites; }
     get spawnPoints() { return this.map.spawns ?? SOLO_LAYOUT.spawns; }
-    restart(): void { this.tick = 0; this.scores = [0, 0]; this.result = null; this.sudden = false; this.suddenEnd = 14400; this.paused = false; this.shells = []; this.events = []; this.smokes = []; this.tracks = []; this.rawSounds = []; this.trackMemory = [new Map(), new Map()]; this.sightings = [new Map(), new Map()]; this.ground = [[], []]; this.groundTick = [-10, -10]; this.groundDirty = true; this.actors = Array.from({ length: 4 }, (_, id) => { const team = (id < 2 ? 0 : 1) as Team; return { id, team, ...this.spawnPoints[team][id % this.spawnPoints[team].length], hp: 100, hull: team === 0 ? 0 : Math.PI, turret: team === 0 ? 0 : Math.PI, speed: 0, respawn: 0, protection: 60, smokeReady: 0, revealUntil: 0, silent: false, trackDistance: 0, lastTrack: -100, cannon: new CombatSandbox() }; }); this.botStates = this.actors.map(a => newBotState(a.id + 1 + this.seed * 100)); this.updateEvidence(); }
+    restart(): void { this.feedback=[]; this.eventTeams.clear(); this.tick = 0; this.scores = [0, 0]; this.result = null; this.sudden = false; this.suddenEnd = 14400; this.paused = false; this.shells = []; this.events = []; this.smokes = []; this.tracks = []; this.rawSounds = []; this.trackMemory = [new Map(), new Map()]; this.sightings = [new Map(), new Map()]; this.ground = [[], []]; this.groundTick = [-10, -10]; this.groundDirty = true; this.actors = Array.from({ length: 4 }, (_, id) => { const team = (id < 2 ? 0 : 1) as Team; return { id, team, ...this.spawnPoints[team][id % this.spawnPoints[team].length], hp: 100, hull: team === 0 ? 0 : Math.PI, turret: team === 0 ? 0 : Math.PI, speed: 0, respawn: 0, protection: 60, smokeReady: 0, revealUntil: 0, silent: false, trackDistance: 0, lastTrack: -100, cannon: new CombatSandbox() }; }); this.botStates = this.actors.map(a => newBotState(a.id + 1 + this.seed * 100)); this.updateEvidence(); }
     setPaused(value: boolean): void {
         this.paused = value;
         this.events = [];
@@ -172,7 +183,7 @@ export class SoloMatch {
             this.ground[team] = cells;
             this.groundTick[team] = this.tick;
         }
-        return { difficulty:this.difficulty,smokes: this.smokes.filter(s => observers.some(o => Math.hypot(o.x - s.x, o.y - s.y) <= 100 || groundSight(this.map, this.smokes.filter(c => c.id !== s.id), o, s, 540))).map(s => ({ ...s })), tracks: [...this.trackMemory[team].values()].map(t => ({ ...t, stage: Math.min(2, Math.floor((360 - (t.expires - this.tick)) / 120)) })), sightings: [...this.sightings[team].values()].filter(s => !this.actors.some(a => a.id === s.id && this.visibleTank(team, a))).map(s => ({ ...s })), sounds, ground: includeGround ? [...this.ground[team]] : [], tick: this.tick, paused: this.paused, allies: allies.map(a => this.actorView(a)), enemies: this.actors.filter(a => a.team !== team && a.hp > 0 && this.visibleTank(team, a)).map(a => this.actorView(a)), searchAreas: this.sites.map(p=>({x:p.x,y:p.y})), killTarget: this.killTarget, scores: [...this.scores], secondsLeft: Math.max(0, ((this.sudden ? this.suddenEnd : 12600) - this.tick) / 30), sudden: this.sudden, result: this.result, shells: this.shells.filter(visible).map(s => ({ id: s.id, x: s.x, y: s.y, angle: s.angle, speed: s.speed, damage: s.damage, remaining: s.remaining, charge: s.charge, hostile: s.team !== team })), events: this.events.filter(visible).map(e => ({ ...e })) };
+        return { feedback: allies.some(a=>a.id===listenerId)?this.feedback.filter(f=>f.recipient===listenerId&&f.cue.expires>this.tick).map(f=>({...f.cue})):[],difficulty:this.difficulty,smokes: this.smokes.filter(s => observers.some(o => Math.hypot(o.x - s.x, o.y - s.y) <= 100 || groundSight(this.map, this.smokes.filter(c => c.id !== s.id), o, s, 540))).map(s => ({ ...s })), tracks: [...this.trackMemory[team].values()].map(t => ({ ...t, stage: Math.min(2, Math.floor((360 - (t.expires - this.tick)) / 120)) })), sightings: [...this.sightings[team].values()].filter(s => !this.actors.some(a => a.id === s.id && this.visibleTank(team, a))).map(s => ({ ...s })), sounds, ground: includeGround ? [...this.ground[team]] : [], tick: this.tick, paused: this.paused, allies: allies.map(a => this.actorView(a)), enemies: this.actors.filter(a => a.team !== team && a.hp > 0 && this.visibleTank(team, a)).map(a => this.actorView(a)), searchAreas: this.sites.map(p=>({x:p.x,y:p.y})), killTarget: this.killTarget, scores: [...this.scores], secondsLeft: Math.max(0, ((this.sudden ? this.suddenEnd : 12600) - this.tick) / 30), sudden: this.sudden, result: this.result, shells: this.shells.filter(visible).map(s => ({ id: s.id, x: s.x, y: s.y, angle: s.angle, speed: s.speed, damage: s.damage, remaining: s.remaining, charge: s.charge, hostile: s.team !== team })), events: this.events.filter(e=>this.eventTeams.has(e.id)?this.eventTeams.get(e.id)!.includes(team):visible(e)).map(e => ({ ...e })) };
     }
     private spawn(a: Actor): void {
         const enemies = this.actors.filter(e => e.team !== a.team && e.hp > 0);
@@ -191,6 +202,7 @@ export class SoloMatch {
         if (this.paused || this.result !== null)
             return;
         this.events = [];
+        this.eventTeams.clear();
         const smokeIntents = this.actors.map(a => a.id === 0 && smoke);
         const old = new Map(this.actors.map(a => [a.id, { x: a.x, y: a.y }]));
         const intents = this.actors.map(a => ({ drive: a.id === 0 ? input : neutralInput(), actions: a.id === 0 ? actions : [] as WeaponAction[] }));
@@ -247,12 +259,16 @@ export class SoloMatch {
                     a.revealUntil = this.tick + 36;
                     this.sound(a, 'shot', 700);
                 }
-                this.events.push({ ...e, id: this.nextEvent++ });
+                const event={...e,id:this.nextEvent++};
+                this.events.push(event);
+                this.eventTeams.set(event.id,([0,1] as const).filter(team=>a.team===team||this.visibleTank(team,a)));
             }
             for (const shell of a.cannon.shells)
-                this.shells.push({ ...shell, id: this.nextShell++, team: a.team });
+                this.shells.push({ ...shell, id: this.nextShell++, team: a.team, owner:a.id });
             a.cannon.shells = [];
         }
+        const contributors = new Map<number,Set<number>>();
+        const damageTeams = new Map<number,Team[]>();
         const damage = new Map<number, number>(), survivors: MatchShell[] = [];
         for (const s of this.shells) {
             const distance = Math.min(s.speed / 30, s.remaining), dx = Math.cos(s.angle) * distance, dy = Math.sin(s.angle) * distance;
@@ -274,8 +290,14 @@ export class SoloMatch {
                 }
             }
             if (earliest !== Infinity) {
-                if (victim)
+                if (victim) {
                     damage.set(victim.id, (damage.get(victim.id) ?? 0) + s.damage);
+                    damageTeams.set(victim.id,([0,1] as const).filter(team=>victim.team===team||this.visibleTank(team,victim)));
+                    this.cue(victim.id,'damage',(Math.round((s.angle+Math.PI)/(Math.PI/4))+8)%8);
+                    if(s.owner!==undefined&&this.visibleTank(s.team,victim)){
+                        const owners=contributors.get(victim.id)??new Set<number>();owners.add(s.owner);contributors.set(victim.id,owners);
+                    }
+                }
                 this.events.push({ id: this.nextEvent++, kind: 'impact', x: s.x + dx * earliest, y: s.y + dy * earliest, charge: s.charge });
                 continue;
             }
@@ -288,14 +310,17 @@ export class SoloMatch {
         this.shells = survivors;
         for (const [id, amount] of damage) {
             const a = this.actors[id];
+            const teams=damageTeams.get(id)!;
             a.hp = Math.max(0, a.hp - amount);
+            for(const owner of contributors.get(id)??[]){this.cue(owner,'hit');if(a.hp===0)this.cue(owner,'kill');}
             if (a.hp === 0) {
                 this.scores[1-a.team]++;
                 a.respawn = 150;
                 a.speed = 0;
                 a.cannon.hp = 0;
                 a.cannon.cancel();
-                this.events.push({ id: this.nextEvent++, kind: 'destruction', x: a.x, y: a.y, charge: 0 });
+                const event:CombatEvent={ id: this.nextEvent++, kind: 'destruction', x: a.x, y: a.y, charge: 0 };
+                this.events.push(event);this.eventTeams.set(event.id,teams);
             }
         }
         // Resolve all damage and team scores before deciding a result, including trades.
@@ -309,6 +334,7 @@ export class SoloMatch {
             else { this.sudden = true; this.suddenEnd = this.tick + 1800; }
         }
         this.events = this.events.slice(-64);
+        this.feedback=this.feedback.filter(f=>f.cue.expires>this.tick);
         this.updateEvidence();
     }
 }

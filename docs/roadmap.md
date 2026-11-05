@@ -33,6 +33,11 @@ TDD, conservative manual CI, milestone commits/pushes, and milestone-only playte
 The owner identified Relay's spawn/ring/clear/occupy/die cycle and smoke camping as a weak mode loop and expressed a preference for team deathmatch. Keep that finding explicit: systems approval is not Relay fun validation. S3 leaves the mode unchanged while completing usability/offline delivery. The owner accepted S3 and authorized the next milestone on November 5. The [S4 handoff](s4.md) records the implemented default team deathmatch replacement: 15 team kills or seven minutes, bounded overtime, search/engage/reposition bots and updated training. The owner accepted this experiment for progression on November 5 (“very good. continue”).
 
 
-## Current milestone: S5 — battlefield art and tank readability (implemented; awaiting playtest)
+## S5 — battlefield art and tank readability (accepted for progression)
 
-The [S5 handoff](s5.md) records a bounded presentation pass: textured terrain, brush foliage, dressed existing cover and separate tank hull/turret sprites with team symbols. Preserve the accepted solo deathmatch, movement and perception rules. This is presentation work toward the original M7 goals, not final-art or Gate C completion. Await owner feedback on readability before further expansion. Multiplayer remains deferred.
+The [S5 handoff](s5.md) records a bounded presentation pass: textured terrain, brush foliage, dressed existing cover and separate tank hull/turret sprites with team symbols. Preserve the accepted solo deathmatch, movement and perception rules. This is presentation work toward the original M7 goals, not final-art or Gate C completion. The owner accepted this pass for progression on November 5 (“i like it”). Multiplayer remains deferred.
+
+
+## Current milestone: S6 — confirmed combat feedback and compact HUD (implemented; awaiting playtest)
+
+The [S6 handoff](s6.md) records personal authorized hit/destruction confirmation, coarse incoming trajectory cues, a compact health/weapon/smoke HUD and a concealed-destruction effect authorization fix. Preserve the accepted gameplay baseline. Await owner feedback on combat/stealth readability before expanding scope. Multiplayer remains deferred.

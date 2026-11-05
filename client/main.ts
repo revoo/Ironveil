@@ -1,3 +1,4 @@
+import {combatHUD,SECTORS} from './combat-hud';
 import {createBattlefield,createTankTextures,TERRAIN_COLORS} from './art';
 import {Controls,readSettings,saveSettings,keyLabel,type Settings} from './settings';
 import {mountSettings} from './ui';
@@ -71,6 +72,9 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     if(tutorialMode&&m.tutorialStep===tutorialProgress.index&&tutorialProgress.observe(solo)){showLesson();controls.clear();worker.postMessage({type:'neutralize'});gameScene?.clearKeys();if(tutorialProgress.index<LESSONS.length)worker.postMessage({type:'lesson',index:tutorialProgress.index});else pause(true);}
 
     const me=solo.allies.find(a=>a.id===0)!;
+    const feedback=combatHUD(solo);
+    const cueText=[feedback.confirmation,...feedback.damageSectors.map(s=>'INCOMING '+SECTORS[s])].filter(Boolean).join(' · '),cueLine=document.querySelector('#combat-feedback')!;
+    if(cueLine.textContent!==cueText)cueLine.textContent=cueText;
     if(solo.tick < lastSoloTick) { tankPoses=new PoseBuffer();targetPoses.clear();shellPoses.clear(); }
     lastSoloTick=solo.tick;
     soloActors=[...solo.allies.filter(a=>a.id!==0),...solo.enemies];
@@ -114,6 +118,9 @@ class Playground extends Phaser.Scene {
   private soundFx!:Phaser.GameObjects.Graphics;
   private soundLabels:Phaser.GameObjects.Text[]=[];private lastSound=0;private lastFogTick=-10;private nextHum=0;private nextEngine=0;private previousSmoke=0;
   private mini!: Phaser.GameObjects.Graphics;
+  private instruments!:Phaser.GameObjects.Graphics;
+  private confirmation!:Phaser.GameObjects.Text;
+  private help!:Phaser.GameObjects.Text;
   private unitSprites = new Map<number,{hull:Phaser.GameObjects.Image;turret:Phaser.GameObjects.Image}>();
   private activeInput = true;
   clearKeys():void{controls.clear();this.input.keyboard?.resetKeys();}
@@ -137,10 +144,13 @@ class Playground extends Phaser.Scene {
     for(const l of trainingMap.landmarks??[])this.add.text(780+l.x/10,16+l.y/10+6,l.name==='Radio Tower'?'RADIO':l.name==='Broken Bridge'?'BRIDGE':'DEPOT',{fontFamily:'monospace',fontSize:'9px',color:'#d8ddc4',backgroundColor:'#101b17'}).setOrigin(.5).setScrollFactor(0).setDepth(8);
     this.mini=this.add.graphics().setScrollFactor(0).setDepth(7);
     this.hud = this.add.text(18, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#edf4df', backgroundColor: '#101b17cc', padding: { x: 8, y: 6 } }).setScrollFactor(0).setDepth(7);
+    this.instruments=this.add.graphics().setScrollFactor(0).setDepth(8);
+    this.confirmation=this.add.text(480,405,'',{fontFamily:'monospace',fontSize:'18px',color:'#ffebaf',backgroundColor:'#101b17cc',padding:{x:8,y:5}}).setOrigin(.5).setScrollFactor(0).setDepth(8);
+    this.help=this.add.text(18,525,'',{fontFamily:'monospace',fontSize:'12px',color:'#c3d2bb',backgroundColor:'#101b17cc',padding:{x:6,y:4}}).setOrigin(0,1).setScrollFactor(0).setDepth(7);
     this.applySettings();const canvas=this.game.canvas;canvas.tabIndex=0;canvas.setAttribute('aria-label','Tank battlefield; keyboard controls available in Settings');
     this.cameras.main.setBounds(0, 0, trainingMap.width * 32, trainingMap.height * 32).centerOn(160, 272);
   }
-  applySettings():void{this.sound.volume=settings.volume;this.sound.mute=settings.muted;if(this.hud)this.hud.setFontSize(14*settings.textScale).setWordWrapWidth(720);for(const label of this.soundLabels)label.setFontSize(12*settings.textScale);}
+  applySettings():void{this.sound.volume=settings.volume;this.sound.mute=settings.muted;if(this.hud)this.hud.setFontSize(14*settings.textScale).setWordWrapWidth(720);for(const label of this.soundLabels)label.setFontSize(12*settings.textScale);this.confirmation?.setFontSize(18*settings.textScale);this.help?.setFontSize(12*settings.textScale).setWordWrapWidth(900);}
   neutralize(): void { controls.clear();this.activeInput = false; worker.postMessage({ type: 'neutralize' }); worker.postMessage({ type: 'input', input: { ...neutralInput(), aim: state?.turret ?? 0 } }); this.input.keyboard?.resetKeys(); }
   reactivate(): void { this.activeInput = true; }
   update(_time: number, delta: number): void {
@@ -225,7 +235,21 @@ class Playground extends Phaser.Scene {
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = drive.silent && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
-    if(solo){this.hud.setText(`MOVE ${[settings.bindings.up,settings.bindings.left,settings.bindings.down,settings.bindings.right].map(keyLabel).join('/')} · MOUSE AIM · ${keyLabel(settings.bindings.fire)} FIRE · RMB/${keyLabel(settings.bindings.cancel)} CANCEL\nHP ${combat?.hp ?? 100} ${solo.allies[0].quiet?'QUIET MOVEMENT':''} ${solo.allies[0].revealed?'FIRING REVEAL':''} ${combat?.hp===0?'RESPAWN '+((solo.allies[0].respawn)/30).toFixed(1)+'s':''} · ${keyLabel(settings.bindings.quiet)} QUIET · ${keyLabel(settings.bindings.mute)} SOUND · ${keyLabel(settings.bindings.pause)} SETTINGS\n${keyLabel(settings.bindings.smoke)} SMOKE ${solo.allies[0].smokeIn>0?(solo.allies[0].smokeIn/30).toFixed(1)+'s':'READY'} · X = LAST SEEN\n${combat?.weapon==='charging'&&combat.charge>=1?'FULL — RELEASE BEFORE VENT':combat?.weapon??'ready'} ${Math.round((combat?.charge??0)*100)}% · ${((combat?.remainingTicks??0)/30).toFixed(2)}s\nTEAM DEATHMATCH · FIRST TO ${solo.killTarget} KILLS`);return;}
+    if(solo){
+      const me=solo.allies[0],readout=combatHUD(solo),fx=this.instruments;fx.clear();
+      const health=me.hp===0?`DESTROYED · RESPAWN ${(me.respawn/30).toFixed(1)}s`:`HP ${me.hp}${me.protection>0?' · PROTECTED '+(me.protection/30).toFixed(1)+'s':''}`;
+      this.hud.setText(`${health}\n${readout.weapon}\n${keyLabel(settings.bindings.smoke)} SMOKE ${me.smokeIn>0?(me.smokeIn/30).toFixed(1)+'s':'READY'}${me.quiet?' · QUIET':''}${me.revealed?' · FIRING REVEAL':''}`);
+      const y=24+this.hud.height;
+      fx.fillStyle(0x101b17,.95).fillRect(18,y,240,12).fillStyle(0x85c99a).fillRect(21,y+3,100*me.hp/100,6).fillStyle(me.charge>=1?0xffb26b:0xf2d384).fillRect(130,y+3,120*me.charge,6);
+      fx.lineStyle(1,0x879b7e).strokeRect(21,y+3,100,6).strokeRect(130,y+3,120,6);
+      this.confirmation.setText(readout.confirmation).setVisible(Boolean(readout.confirmation));
+      if(readout.confirmation){const color=readout.confirmation==='ENEMY DESTROYED'?0xffd88b:0xffffff;fx.lineStyle(2,color);for(const [x,y] of [[-1,-1],[1,1],[-1,1],[1,-1]])fx.lineBetween(pointerX+x*10,pointerY+y*10,pointerX+x*16,pointerY+y*16);}
+      for(const sector of readout.damageSectors){const angle=sector*Math.PI/4,dx=Math.cos(angle),dy=Math.sin(angle),x=480+dx*420,y=270+dy*215;
+        fx.fillStyle(0xff947d).fillTriangle(x-dx*13,y-dy*13,x+dx*9-dy*10,y+dy*9+dx*10,x+dx*9+dy*10,y+dy*9-dx*10);
+      }
+      this.help.setText(`${[settings.bindings.up,settings.bindings.left,settings.bindings.down,settings.bindings.right].map(keyLabel).join('/')} MOVE · ${keyLabel(settings.bindings.fire)} FIRE · RMB/${keyLabel(settings.bindings.cancel)} CANCEL · ${keyLabel(settings.bindings.quiet)} QUIET · ${keyLabel(settings.bindings.pause)} SETTINGS`);
+      return;
+    }
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\nM SOUND ${this.sound.mute ? "OFF" : "ON"} · HP ${combat?.hp ?? 100} ${combat?.hp === 0 ? "DESTROYED — R TO RESET" : ""} · R RESET · T TRAINING FIRE ${combat?.incomingFire ? "ON" : "OFF"}\n${combat?.weapon === "charging" && combat.charge >= 1 ? "FULL — RELEASE BEFORE VENT" : combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
   }
 }
