@@ -1,3 +1,4 @@
+import {RecoilRig,type RecoilPose} from './recoil';
 import {combatHUD,SECTORS} from './combat-hud';
 import {createBattlefield,createTankTextures,TERRAIN_COLORS} from './art';
 import {Controls,readSettings,saveSettings,keyLabel,type Settings} from './settings';
@@ -34,7 +35,7 @@ const showScoreboard=(show:boolean)=>{scoreboard.hidden=!show;if(show&&solo)scor
 document.querySelector<HTMLButtonElement>('#scoreboard-button')!.onclick=()=>showScoreboard(scoreboard.hidden);
 document.querySelector<HTMLButtonElement>('#fullscreen')!.onclick=()=>{const field=document.querySelector<HTMLElement>('#game')!;if(document.fullscreenElement)void document.exitFullscreen();else void field.requestFullscreen?.().catch(()=>{workerStatus.textContent='Fullscreen unavailable in this browser.';});};
 document.addEventListener('fullscreenchange',()=>gameScene?.scale.refresh());
-const restart=()=>{showScoreboard(false);if(tutorialMode){tutorialProgress=new TutorialProgress();showLesson();}worker.postMessage({type:'reset',difficulty:settings.difficulty});gameScene?.clearKeys();document.querySelector<HTMLCanvasElement>('canvas')?.focus();};
+const restart=()=>{gameScene?.resetRecoil();showScoreboard(false);if(tutorialMode){tutorialProgress=new TutorialProgress();showLesson();}worker.postMessage({type:'reset',difficulty:settings.difficulty});gameScene?.clearKeys();document.querySelector<HTMLCanvasElement>('canvas')?.focus();};
 document.querySelector<HTMLButtonElement>('#restart')!.onclick=restart;
 document.querySelector<HTMLButtonElement>('#play-again')!.onclick=restart;document.querySelector<HTMLButtonElement>('#restart-tutorial')!.onclick=restart;showLesson();
 
@@ -44,7 +45,7 @@ const worker = new Worker(new URL('./solo-worker/worker.ts', import.meta.url), {
 const eventInbox=new EventInbox<CombatEvent>();
 let tankPoses = new PoseBuffer();
 const targetPoses = new Map<number, PoseBuffer>();
-let recoilUntil = 0, recoilStrength = 0, hitUntil = 0, hurtUntil = 0;
+let hitUntil = 0, hurtUntil = 0;
 const shellPoses = new Map<number, PoseBuffer>();
 let state: Tank | undefined;
 let combat: CombatView | undefined;
@@ -81,7 +82,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     const feedback=combatHUD(solo);
     const cueText=[feedback.confirmation,...feedback.damageSectors.map(s=>'INCOMING '+SECTORS[s])].filter(Boolean).join(' · '),cueLine=document.querySelector('#combat-feedback')!;
     if(cueLine.textContent!==cueText)cueLine.textContent=cueText;
-    if(solo.tick < lastSoloTick) { eventInbox.clear();tankPoses=new PoseBuffer();targetPoses.clear();shellPoses.clear(); }
+    if(solo.tick < lastSoloTick) { gameScene?.resetRecoil();eventInbox.clear();tankPoses=new PoseBuffer();targetPoses.clear();shellPoses.clear(); }
     lastSoloTick=solo.tick;
     soloActors=[...solo.allies.filter(a=>a.id!==0),...solo.enemies];
     const key=soloActors.map(a=>a.id).join(','); if(key!==targetKey){targetPoses.clear();targetKey=key;}
@@ -97,10 +98,10 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
   if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start', mode:rangeMode?'range':tutorialMode?'tutorial':'solo',difficulty:settings.difficulty }); }
   else if (m.type === 'state') { state = m.tank;
-    if (m.combat.weapon === 'reloading' && combat?.weapon !== 'reloading') { recoilUntil = performance.now() + 160; recoilStrength = 3 + 7 * (combat?.charge ?? 0); }
+
     if (m.combat.hits > (combat?.hits ?? 0)) hitUntil = performance.now() + 180;
     if (m.combat.hp < (combat?.hp ?? 100)) hurtUntil = performance.now() + 200;
-    eventInbox.push(m.combat.events);combat = m.combat;driveStatus.dataset.charge=String(combat.charge);driveStatus.dataset.barrel=String(state.turret);
+    eventInbox.push(rangeMode?m.combat.events.map(e=>e.kind==='shot'?{...e,actorId:0,angle:m.tank.turret}:e):m.combat.events);combat = m.combat;driveStatus.dataset.charge=String(combat.charge);driveStatus.dataset.barrel=String(state.turret);
     driveStatus.dataset.hp = String(combat.hp); driveStatus.dataset.incoming = String(combat.incomingFire);
     const now = performance.now();
     tankPoses.push(m.tick, state, now);
@@ -131,6 +132,9 @@ class Playground extends Phaser.Scene {
   private unitSprites = new Map<number,{hull:Phaser.GameObjects.Image;turret:Phaser.GameObjects.Image}>();
   private activeInput = true;
   clearKeys():void{showScoreboard(false);controls.clear();this.input.keyboard?.resetKeys();}
+  private recoils=new Map<number,RecoilRig>();
+  private playerKicks=0;private playerPeak=0;
+  resetRecoil():void{this.recoils.clear();this.playerKicks=0;this.playerPeak=0;}
   private lastEffect = 0;
   private effects: {event: CombatEvent; until:number}[] = [];
   preload():void {this.load.audio('music',wavData(musicWav())); for(const kind of ['tap','full','impact','destruction','vent','engine','charge','smoke'] as const) this.load.audio(kind,audioData(kind)); }
@@ -166,6 +170,24 @@ class Playground extends Phaser.Scene {
     driveStatus.dataset.audioReady = String(!this.sound.locked); driveStatus.dataset.muted = String(this.sound.mute);
     if (!state) return;
     const rendered = tankPoses.sample(performance.now()) ?? state;
+    const liveRecoilIds=new Set([...(combat?.hp? [0]:[]),...soloActors.filter(a=>a.hp>0).map(a=>a.id)]);
+    for(const id of this.recoils.keys())if(!liveRecoilIds.has(id))this.recoils.delete(id);
+    const now = performance.now();
+    for(const event of eventInbox.drain()) {
+      if(event.id <= this.lastEffect) continue;
+      this.lastEffect = event.id;
+      if(event.kind==='shot'&&event.actorId!==undefined&&event.angle!==undefined&&!settings.reducedMotion&&liveRecoilIds.has(event.actorId)){
+        const rig=this.recoils.get(event.actorId)??new RecoilRig();rig.kick(event.charge,event.angle);this.recoils.set(event.actorId,rig);
+        if(event.actorId===0){this.playerKicks++;this.playerPeak=0;}
+      }
+      if(this.effects.length >= (settings.lowEffects?16:64)) this.effects.shift();
+      this.effects.push({event,until:now+(event.kind === 'destruction' ? 450 : 220)});
+      if(!this.sound.locked) this.playFX(event.kind === 'shot' ? (event.charge >= 0.5 ? 'full' : 'tap') : event.kind, {volume:event.kind === 'shot' ? 0.25+0.15*event.charge : 0.15});
+    }
+    const recoilPoses=new Map<number,RecoilPose>();
+    for(const [id,rig] of this.recoils)recoilPoses.set(id,rig.step(solo?.paused?0:delta/1000,settings.reducedMotion));
+    const recoil=recoilPoses.get(0)??{x:0,y:0,barrel:0};this.playerPeak=Math.max(this.playerPeak,recoil.barrel);
+    driveStatus.dataset.recoilContacts=String([...this.recoils.keys()].filter(id=>id!==0).length);driveStatus.dataset.recoilKicks=String(this.playerKicks);driveStatus.dataset.recoilPeak=String(this.playerPeak);driveStatus.dataset.recoilBarrel=String(recoil.barrel);
     const pointer = this.input.activePointer;
     // DOM lesson/settings layout can move the canvas between Phaser's periodic bounds checks.
     this.scale.updateBounds();
@@ -175,27 +197,19 @@ class Playground extends Phaser.Scene {
     const aim = Math.atan2(world.y - state.y, world.x - state.x);
     const drive=controls.drive(aim);
     worker.postMessage({type:'input',input:this.activeInput&&!settingsOpen()?drive:{...neutralInput(),aim}});
-    this.hull.setPosition(rendered.x, rendered.y).setRotation(rendered.hull);
-    const recoil = settings.reducedMotion?0:Math.max(0, (recoilUntil - performance.now()) / 160) * recoilStrength;
+    this.hull.setPosition(rendered.x+recoil.x, rendered.y+recoil.y).setRotation(rendered.hull);
     this.hull.setAlpha(combat?.hp === 0 ? 0.25 : 1); this.turret.setAlpha(combat?.hp === 0 ? 0.25 : 1);
-    this.turret.setPosition(rendered.x-Math.cos(rendered.turret)*recoil,rendered.y-Math.sin(rendered.turret)*recoil).setRotation(rendered.turret);
+    this.turret.setPosition(rendered.x+recoil.x-Math.cos(rendered.turret)*recoil.barrel,rendered.y+recoil.y-Math.sin(rendered.turret)*recoil.barrel).setRotation(rendered.turret);
     this.cursor.clear().lineStyle(2, 0xffffff, 0.85).strokeCircle(world.x, world.y, 8).lineBetween(world.x - 13, world.y, world.x + 13, world.y).lineBetween(world.x, world.y - 13, world.x, world.y + 13);
     const leadX=settings.reducedMotion?0:Phaser.Math.Clamp(pointerX-480,-240,240)/3,leadY=settings.reducedMotion?0:Phaser.Math.Clamp(pointerY-270,-240,240)/3;
     const cam = this.cameras.main, blend = settings.reducedMotion?1:1 - Math.exp(-Math.min(delta, 100) / 180);
     cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, rendered.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, rendered.y + leadY, blend));
-    const now = performance.now();
-    for(const event of eventInbox.drain()) {
-      if(event.id <= this.lastEffect) continue;
-      this.lastEffect = event.id;
-      if(this.effects.length >= (settings.lowEffects?16:64)) this.effects.shift();
-      this.effects.push({event,until:now+(event.kind === 'destruction' ? 450 : 220)});
-      if(!this.sound.locked) this.playFX(event.kind === 'shot' ? (event.charge >= 0.5 ? 'full' : 'tap') : event.kind, {volume:event.kind === 'shot' ? 0.25+0.15*event.charge : 0.15});
-    }
     this.effects = this.effects.filter(effect=>effect.until > now);
     this.battle.clear();
     for(const effect of this.effects) {
       const event=effect.event, fade=Math.min(1,(effect.until-now)/220);
       const radius=settings.reducedMotion?12:event.kind === 'destruction' ? 22+(1-fade)*20 : 4+(1-fade)*(12+event.charge*10);
+      if(event.kind==='shot'&&effect.until-now>160)this.battle.fillStyle(0xffedab).fillCircle(event.x,event.y,3+event.charge*5);
       this.battle.lineStyle(event.kind === 'destruction' ? 4 : 2,event.kind === 'vent' ? 0xa2b4ac : 0xffd99b,fade).strokeCircle(event.x,event.y,radius);
     }
     if(solo) {
@@ -228,8 +242,9 @@ class Playground extends Phaser.Scene {
         if(actor){
           let sprite=this.unitSprites.get(actor.id);
           if(!sprite){const skin=actor.team===0?'ally':'enemy';sprite={hull:this.add.image(0,0,'hull-'+skin).setDepth(5),turret:this.add.image(0,0,'turret-'+skin).setOrigin(1/3,.5).setDepth(5.1)};this.unitSprites.set(actor.id,sprite);}
-          sprite.hull.setPosition(target.x,target.y).setRotation(pose?.hull??actor.hull);
-          sprite.turret.setPosition(target.x,target.y).setRotation(pose?.turret??actor.turret);
+          const kick=recoilPoses.get(actor.id)??{x:0,y:0,barrel:0},bearing=pose?.turret??actor.turret;
+          sprite.hull.setPosition(target.x+kick.x,target.y+kick.y).setRotation(pose?.hull??actor.hull);
+          sprite.turret.setPosition(target.x+kick.x-Math.cos(bearing)*kick.barrel,target.y+kick.y-Math.sin(bearing)*kick.barrel).setRotation(bearing);
           if(actor.weapon==='charging'){chargingContacts++;this.battle.lineStyle(2,actor.charge>=1?0xffcf77:0xd2bf83,.85).strokeCircle(target.x,target.y,27+actor.charge*6);}
           if(actor.protection>0)this.battle.lineStyle(2,0xffffff).strokeCircle(target.x,target.y,29);
         }
@@ -243,7 +258,7 @@ class Playground extends Phaser.Scene {
       if (performance.now() < hitUntil) this.battle.lineStyle(3,0xffffff).strokeCircle(world.x,world.y,16);
       if (performance.now() < hurtUntil) this.battle.lineStyle(4,0xff9177).strokeCircle(rendered.x,rendered.y,38);
       if (combat.incomingFire) this.battle.lineStyle(2,0xff9177).strokeCircle(420,272,16);
-      if (performance.now() < recoilUntil - 100) this.battle.fillStyle(0xffedab).fillCircle(rendered.x + Math.cos(rendered.turret)*36,rendered.y+Math.sin(rendered.turret)*36,3+recoilStrength*0.4);
+
       if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = drive.silent && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;

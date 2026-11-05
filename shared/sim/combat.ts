@@ -5,7 +5,7 @@ export type WeaponAction = 'press' | 'release' | 'cancel';
 export type WeaponState = 'ready' | 'charging' | 'reloading' | 'cancel recovery' | 'vent recovery';
 export interface Shell { id: number; x: number; y: number; angle: number; speed: number; damage: number; remaining: number; charge: number; hostile?: boolean }
 export interface Dummy { x: number; y: number; hp: number; reset: number; vx?: number; vy?: number; patrolMin?: number; patrolMax?: number }
-export interface CombatEvent { id:number; kind:'shot'|'impact'|'destruction'|'vent'; x:number; y:number; charge:number }
+export interface CombatEvent { actorId?:number; angle?:number; id:number; kind:'shot'|'impact'|'destruction'|'vent'; x:number; y:number; charge:number }
 export interface CombatView { events: CombatEvent[]; hp: number; incomingFire: boolean; weapon: WeaponState; charge: number; remainingTicks: number; shells: Shell[]; targets: Dummy[]; hits: number }
 /** Swept point against an axis-aligned box; returns normalized first impact. */
 export function segmentBox(x: number, y: number, dx: number, dy: number, box: { x: number; y: number; width: number; height: number }): number | undefined {

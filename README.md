@@ -1,6 +1,6 @@
 # Ironveil
 
-Ironveil is a top-down tank game focused on local solo play. The **solo V1 implementation is complete and ready for the final owner playtest**. The 1.1 tactical AI pass adds goal/action planning, uncertain memory, coordinated roles and persistent personalities; see [the AI report](docs/tactical-ai.md). Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [solo specification audit and handoff](docs/solo-v1.md).
+Ironveil is a top-down tank game focused on local solo play. The **solo V1 implementation is complete and ready for the final owner playtest**. The 1.1 tactical AI pass adds goal/action planning, uncertain memory, coordinated roles and persistent personalities; see [the AI report](docs/tactical-ai.md). Version 1.1.1 adds [charge-scaled spring recoil](docs/recoil.md). Multiplayer is deferred. See the [current roadmap](docs/roadmap.md) and [solo specification audit and handoff](docs/solo-v1.md).
 
 ## Run locally
 

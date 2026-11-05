@@ -259,7 +259,7 @@ export class SoloMatch {
                     a.revealUntil = this.tick + 36;
                     this.sound(a, 'shot', 700);
                 }
-                const event={...e,id:this.nextEvent++};
+                const event={...e,id:this.nextEvent++,...(e.kind==='shot'?{actorId:a.id,angle:a.turret}:{})};
                 this.events.push(event);
                 this.eventTeams.set(event.id,([0,1] as const).filter(team=>a.team===team||this.visibleTank(team,a)));
             }
