@@ -63,3 +63,13 @@ Owner playtest should assess whether pressure/flanks are legible, smoke breaks c
 - Two accelerated simulation hours per preset (six simulated hours total) completed across real match restarts without invalid actor state or storage-bound violations. Max tracks 9/10/17 and max shells 4/7/7; shared-step p99 0.872/0.886/0.950 ms. This is not a six-hour wall-clock browser soak.
 
 The refreshed archive, isolated rendering sample and final manual CI checkpoint are recorded with the release result after the source commit. Existing browser-validation limits remain explicit; no human playtest result is claimed.
+
+### Release result
+
+Source checkpoint `177b73777391a692304c7939e0d29c7d2d62330f` passed [manual CI](https://github.com/revoo/Ironveil-Sol6.1Medium/actions/runs/42087641667). GitHub's authenticated API confirmed that the original authorized repository and both historical CI checkpoints retain immutable repository ID 1445799489 under the renamed canonical address `revoo/Ironveil-Sol6.1Medium`.
+
+The refreshed `release/ironveil-solo-v1.tar.gz` contains solo version 1.1.0 and the source checkpoint in build-info.json. SHA-256: `29bf0deb04c867e812f5f7b44ab7d4c0023cd59954c5fa6324343e9bb704def1`; the sidecar checksum verifies. All three packaged offline acceptance tests pass, including full Chromium process shutdown/restart with network disabled and cache repair. The standalone server is available locally at http://127.0.0.1:4180/.
+
+A fresh isolated Chromium 140 rendering sample of the refreshed package, with movement, smoke and repeated firing at device scale factor 2, measured 600 frames with p50 16.7 ms and p95/p99 16.8 ms, with no page errors. This is the local reference sample, not broad device certification. Close and reopen old Ironveil tabs to activate the new cached version; updates do not replace an active match.
+
+Owner evaluation of tactical readability, challenge and human-like behavior remains pending. No additional CI run is needed for this documentation-only result record.
