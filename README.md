@@ -1,6 +1,8 @@
 # Ironveil
 
-Ironveil is a top-down multiplayer tank game in early development. The current build is an early cannon laboratory, not yet a complete game.
+Ironveil is a top-down tank game in early development, currently focused on local solo play; multiplayer is deferred. The current build is an early cannon laboratory, not yet a complete game.
+
+See the [current roadmap](docs/roadmap.md) for the solo-first milestone order.
 
 ## Run locally
 

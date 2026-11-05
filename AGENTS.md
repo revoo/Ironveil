@@ -14,3 +14,9 @@ Apply this to bug fixes by reproducing the failure in a test before correcting i
 ## Verification and version control
 
 Use local checks during development. GitHub CI is manually triggered for substantial checkpoints and release validation; avoid routine CI runs for small changes. Commit coherent, reviewable changes and keep the GitHub repository updated. Report incomplete milestones and untested gates honestly.
+
+## Active roadmap and playtest cadence
+
+The owner deferred multiplayer on November 4, 2026 to prioritize a fun solo game. Follow docs/roadmap.md over the original milestone order. Next is S1, a complete Worker-hosted local bot battle. Do not expand online infrastructure until the owner reactivates that scope. Preserve shared rules and explicit observation boundaries.
+
+Finish and locally verify a whole milestone before handing it to the owner for playtest. Do not request playtests for intermediate implementation slices. Human gates require recorded feedback; the M2 Gate A approval is provisional and does not validate future solo or multiplayer encounters.
