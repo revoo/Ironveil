@@ -1,3 +1,4 @@
+import { PoseBuffer } from './presentation';
 import type { CombatView } from '../shared/sim/combat';
 import Phaser from 'phaser';
 import { Client } from 'colyseus.js';
@@ -9,13 +10,21 @@ validateMap(trainingMap);
 const workerStatus = document.querySelector('#worker-status')!;
 const driveStatus = document.querySelector<HTMLElement>('#drive-status')!;
 const worker = new Worker(new URL('./solo-worker/worker.ts', import.meta.url), { type: 'module' });
+const tankPoses = new PoseBuffer();
+const shellPoses = new Map<number, PoseBuffer>();
 let state: Tank | undefined;
 let combat: CombatView | undefined;
 let gameScene: Playground | undefined;
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const m = event.data;
   if (m.type === 'advanced') { workerStatus.textContent = `Worker simulation: tick ${m.tick} (${m.elapsedSeconds.toFixed(2)} s)`; worker.postMessage({ type: 'start' }); }
-  else if (m.type === 'state') { state = m.tank; combat = m.combat; driveStatus.dataset.weapon = combat.weapon; driveStatus.dataset.hits = String(combat.hits); driveStatus.dataset.x = String(state.x); driveStatus.dataset.y = String(state.y); driveStatus.dataset.speed = String(state.speed); driveStatus.textContent = `Position ${Math.round(state.x)}, ${Math.round(state.y)} · speed ${Math.round(state.speed)} px/s`; }
+  else if (m.type === 'state') { state = m.tank; combat = m.combat;
+    const now = performance.now();
+    tankPoses.push(m.tick, state, now);
+    const liveShells = new Set(combat.shells.map(shell => shell.id));
+    for (const id of shellPoses.keys()) if (!liveShells.has(id)) shellPoses.delete(id);
+    for (const shell of combat.shells) { const poses = shellPoses.get(shell.id) ?? new PoseBuffer(); poses.push(m.tick, { x: shell.x, y: shell.y, hull: shell.angle, turret: shell.angle }, now); shellPoses.set(shell.id, poses); }
+     driveStatus.dataset.weapon = combat.weapon; driveStatus.dataset.hits = String(combat.hits); driveStatus.dataset.x = String(state.x); driveStatus.dataset.y = String(state.y); driveStatus.dataset.speed = String(state.speed); driveStatus.textContent = `Position ${Math.round(state.x)}, ${Math.round(state.y)} · speed ${Math.round(state.speed)} px/s`; }
   else workerStatus.textContent = `Worker error: ${m.message}`;
 };
 worker.onerror = () => { workerStatus.textContent = 'Worker failed to start. Reload to retry.'; };
@@ -53,19 +62,20 @@ class Playground extends Phaser.Scene {
   reactivate(): void { this.activeInput = true; }
   update(_time: number, delta: number): void {
     if (!state) return;
+    const rendered = tankPoses.sample(performance.now()) ?? state;
     const pointer = this.input.activePointer;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const aim = Math.atan2(world.y - state.y, world.x - state.x);
     const x = Number(this.keys.D.isDown) - Number(this.keys.A.isDown), y = Number(this.keys.S.isDown) - Number(this.keys.W.isDown);
     worker.postMessage({ type: 'input', input: { x: this.activeInput ? x : 0, y: this.activeInput ? y : 0, aim, silent: this.activeInput && this.keys.SHIFT.isDown } });
     this.hull.clear().fillStyle(0x253322).fillRoundedRect(-24, -24, 48, 48, 5).fillStyle(0x9dad7c).fillRoundedRect(-24, -20, 48, 40, 5).lineStyle(2, 0xd5e0bc).strokeRoundedRect(-24, -20, 48, 40, 5);
-    this.hull.setPosition(state.x, state.y).setRotation(state.hull);
+    this.hull.setPosition(rendered.x, rendered.y).setRotation(rendered.hull);
     this.turret.clear().fillStyle(0xd0dcae).fillRoundedRect(0, -4, 34, 8, 3).fillCircle(0, 0, 12).lineStyle(2, 0x273a2c).strokeCircle(0, 0, 12);
-    this.turret.setPosition(state.x, state.y).setRotation(state.turret);
+    this.turret.setPosition(rendered.x, rendered.y).setRotation(rendered.turret);
     this.cursor.clear().lineStyle(2, 0xffffff, 0.85).strokeCircle(world.x, world.y, 8).lineBetween(world.x - 13, world.y, world.x + 13, world.y).lineBetween(world.x, world.y - 13, world.x, world.y + 13);
     const leadX = Phaser.Math.Clamp(pointer.x - 480, -240, 240) / 3, leadY = Phaser.Math.Clamp(pointer.y - 270, -240, 240) / 3;
     const cam = this.cameras.main, blend = 1 - Math.exp(-Math.min(delta, 100) / 180);
-    cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, state.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, state.y + leadY, blend));
+    cam.centerOn(Phaser.Math.Linear(cam.midPoint.x, rendered.x + leadX, blend), Phaser.Math.Linear(cam.midPoint.y, rendered.y + leadY, blend));
     this.battle.clear();
     if (combat) {
       for (const target of combat.targets) {
@@ -73,8 +83,8 @@ class Playground extends Phaser.Scene {
         this.battle.fillStyle(0xb87360).fillRoundedRect(target.x - 20, target.y - 24, 40, 48, 4).lineStyle(2, 0xffd9a8).strokeCircle(target.x, target.y, 12);
         this.battle.fillStyle(0x151c17).fillRect(target.x - 22, target.y - 34, 44, 5).fillStyle(0xf2bf78).fillRect(target.x - 22, target.y - 34, 44 * target.hp / 100, 5);
       }
-      for (const shell of combat.shells) this.battle.fillStyle(0xffedab).fillCircle(shell.x, shell.y, 2 + shell.charge * 2);
-      if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(state.x, state.y, 28 + combat.charge * 6);
+      for (const shell of combat.shells) { const pose = shellPoses.get(shell.id)?.sample(performance.now()) ?? shell; this.battle.fillStyle(0xffedab).fillCircle(pose.x, pose.y, 2 + shell.charge * 2); }
+      if (combat.weapon === 'charging') this.battle.lineStyle(3, 0xffde84).strokeCircle(rendered.x, rendered.y, 28 + combat.charge * 6);
     }
     const quiet = this.keys.SHIFT.isDown && state.speed <= speedCap(trainingMap, state.x, state.y, true) + 0.1;
     this.hud.setText(`WASD  DRIVE     MOUSE  AIM     SHIFT  QUIET\nSpeed ${Math.round(state.speed)} px/s  ${quiet ? 'QUIET CAP ACTIVE' : ''}\nTerrain: ${terrainAt(trainingMap, state.x, state.y)}  |  Walls block movement\nSPACE HOLD/RELEASE FIRE · RMB CANCEL\n${combat?.weapon ?? "ready"} ${Math.round((combat?.charge ?? 0) * 100)}% · ${( (combat?.remainingTicks ?? 0) / 30).toFixed(2)}s · Hits ${combat?.hits ?? 0}`);
