@@ -12,9 +12,8 @@ describe('fixed-step driving', () => {
     const c = tank(); driveTank(c, { x: 0, y: 1, aim: Math.PI / 2, silent: false }, map);
     expect(c.hull).toBeCloseTo(TUNING.hullTurn / 30); expect(c.turret).toBeCloseTo(TUNING.turretTurn / 30);
   });
-  it('rotates in place when facing away and decelerates after release', () => {
-    const t = tank(); run(t, -1, 0, 1); expect(t.speed).toBe(0); expect(t.hull).not.toBe(0);
-    const moving = tank(); run(moving, 1, 0, 30); expect(moving.speed).toBe(180); run(moving, 0, 0, 5); expect(moving.speed).toBeGreaterThan(0); run(moving, 0, 0, 10); expect(moving.speed).toBe(0);
+  it('responds immediately even when the hull faces away', () => {
+    const t=tank();run(t,-1,0,1);expect(t.x).toBeLessThan(160);expect(t.hull).not.toBe(0);
   });
   it('applies terrain and silent speed factors', () => {
     const mud = { ...map, terrain: Array(map.width * map.height).fill('mud') };
@@ -41,21 +40,21 @@ describe('fixed-step driving', () => {
 });
 
 
-it('eases into acceleration and braking instead of changing speed at a constant rate', () => {
-  const t = tank();
-  const speeds = [0];
-  for (let i = 0; i < 18; i++) { run(t, 1, 0, 1); speeds.push(t.speed); }
-  expect(speeds[1]).toBeLessThan(10);
-  expect(speeds[8] - speeds[7]).toBeGreaterThan(speeds[1] - speeds[0]);
-  expect(speeds[18] - speeds[17]).toBeLessThan(speeds[8] - speeds[7]);
-  expect(t.speed).toBeCloseTo(180);
-  const x = t.x;
-  run(t, 0, 0, 1); const firstBrake = 180 - t.speed;
-  run(t, 0, 0, 1); const secondBrake = 180 - firstBrake - t.speed;
-  expect(secondBrake).toBeGreaterThan(firstBrake);
-  run(t, 0, 0, 15); expect(t.speed).toBe(0); expect(t.x - x).toBeGreaterThan(20); expect(t.x - x).toBeLessThan(40);
+it('carries sideways momentum through a turn and coasts after release',()=>{
+ const t=tank();run(t,1,0,60);const start={x:t.x,y:t.y};run(t,0,1,1);
+ expect(t.x).toBeGreaterThan(start.x+3);expect(t.y).toBeGreaterThan(start.y);
+ const before={x:t.x,y:t.y};run(t,0,0,15);expect(t.speed).toBeGreaterThan(25);expect(t.x-before.x).toBeGreaterThan(20);
+ run(t,0,0,120);expect(t.speed).toBe(0);
 });
-
+it('countersteers quickly without snapping or destroying momentum',()=>{
+ const t=tank();run(t,1,0,60);const x=t.x;run(t,-1,0,1);expect(t.x).toBeGreaterThan(x);
+ run(t,-1,0,7);expect(t.x).toBeLessThan(x+12);expect(Math.abs(t.hull)).toBeGreaterThan(Math.PI*0.9);
+ run(t,-1,0,30);expect(t.x).toBeLessThan(x-100);
+});
+it('collisions remove velocity into walls without erasing tangential motion',()=>{
+ const m={...map,walls:[{id:'wall',x:200,y:0,width:32,height:400}]};const t=tank({x:179,y:100,hull:Math.PI/4});run(t,1,1,40,false,m);
+ const y=t.y;run(t,0,0,20,false,m);expect(t.x).toBeLessThanOrEqual(180);expect(t.y).toBeGreaterThan(y+10);
+});
 
 it('responds to a continuously changing charge speed cap', () => {
   const t = tank(); run(t, 1, 0, 30);

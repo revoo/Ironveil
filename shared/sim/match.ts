@@ -92,7 +92,7 @@ export class SoloMatch {
     private spawn(a: Actor): void { const enemies = this.actors.filter(e => e.team !== a.team && e.hp > 0); const options = [...spawnPoints[a.team]].sort((p, q) => { const score = (v: {
         x: number;
         y: number;
-    }) => Math.min(...enemies.map(e => Math.hypot(e.x - v.x, e.y - v.y) - (clearSight(this.map, e, v) ? 300 : 0)), 5000); return score(q) - score(p); }); Object.assign(a, options[0], { hp: 100, speed: 0, respawn: 0, protection: 60, ramp: undefined, hull: a.team === 0 ? 0 : Math.PI, turret: a.team === 0 ? 0 : Math.PI }); a.cannon.reset(); this.botStates[a.id] = newBotState(a.id + 1 + this.tick + this.seed * 100); }
+    }) => Math.min(...enemies.map(e => Math.hypot(e.x - v.x, e.y - v.y) - (clearSight(this.map, e, v) ? 300 : 0)), 5000); return score(q) - score(p); }); Object.assign(a, options[0], { hp: 100, speed: 0, vx: 0, vy: 0, respawn: 0, protection: 60, hull: a.team === 0 ? 0 : Math.PI, turret: a.team === 0 ? 0 : Math.PI }); a.cannon.reset(); this.botStates[a.id] = newBotState(a.id + 1 + this.tick + this.seed * 100); }
     step(input: DriveInput = neutralInput(), actions: WeaponAction[] = []): void {
         if (this.paused || this.result !== null)
             return;

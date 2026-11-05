@@ -14,7 +14,7 @@ let match: SoloMatch | undefined;
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   if (request?.type === 'pause' && match) { match.setPaused(request.value); inbox.clear(); input=neutralInput();
-  } else if (request?.type === 'reset') { match?.restart(); combat.reset(); Object.assign(tank, sim.tank); delete tank.ramp; input = neutralInput(); inbox.clear();
+  } else if (request?.type === 'reset') { match?.restart(); combat.reset(); Object.assign(tank, sim.tank, {vx:0,vy:0}); input = neutralInput(); inbox.clear();
   } else if (request?.type === 'range-fire') { combat.incomingFire = !combat.incomingFire;
   } else if (request?.type === 'weapon' && ['press', 'release', 'cancel'].includes(request.action)) { inbox.push(request.seq, request.action);
   } else if (request?.type === 'neutralize') { input = neutralInput(); inbox.clear(); combat.cancel(); match?.neutralize();

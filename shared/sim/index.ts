@@ -1,7 +1,7 @@
 import { TUNING, type GameMap, type Terrain } from '../content';
 
 export interface DriveInput { x: number; y: number; aim: number; silent: boolean }
-export interface Tank { x: number; y: number; hull: number; turret: number; speed: number; ramp?: { from: number; target: number; tick: number; ticks: number } }
+export interface Tank { x: number; y: number; hull: number; turret: number; speed: number; vx?: number; vy?: number }
 export const neutralInput = (): DriveInput => ({ x: 0, y: 0, aim: 0, silent: false });
 const DT = 1 / TUNING.tickRate;
 const factors: Record<Terrain, number> = { grass: 1, road: 1.1, mud: 0.65, brush: 0.8 };
@@ -30,36 +30,24 @@ function blocked(map: GameMap, x: number, y: number): boolean {
 export function driveTank(tank: Tank, input: DriveInput, map: GameMap, mobility = 1): void {
   const magnitude = Math.hypot(input.x, input.y);
   const moving = Number.isFinite(magnitude) && magnitude > 0;
-  let alignment = 0;
-  if (moving) {
-    const desired = Math.atan2(input.y / magnitude, input.x / magnitude);
-    tank.hull = approachAngle(tank.hull, desired, TUNING.hullTurn * DT);
-    const difference = Math.abs(wrap(desired - tank.hull));
-    alignment = difference <= Math.PI / 6 ? 1 : Math.max(0, (Math.PI / 2 - difference) / (Math.PI / 3));
-  }
+  if (moving) tank.hull = approachAngle(tank.hull, Math.atan2(input.y, input.x), TUNING.hullTurn * DT);
   if (Number.isFinite(input.aim)) tank.turret = approachAngle(tank.turret, input.aim, TUNING.turretTurn * DT);
-  const cap = speedCap(map, tank.x, tank.y, input.silent);
-  const target = cap * alignment * mobility;
-  const ramp = tank.ramp;
-  if (ramp && ramp.target !== target && ramp.tick < ramp.ticks && Math.sign(target - tank.speed) === Math.sign(ramp.target - ramp.from)) {
-    // Retarget without restarting the curve every tick (charge and turning caps vary continuously).
-    const progress = ramp.tick / ramp.ticks;
-    const eased = progress * progress * (3 - 2 * progress);
-    ramp.from = (tank.speed - target * eased) / (1 - eased);
-    ramp.target = target;
-  } else if (!ramp || ramp.target !== target) {
-    tank.ramp = { from: tank.speed, target, tick: 0, ticks: Math.ceil((target > tank.speed ? TUNING.accelerationSeconds : TUNING.brakingSeconds) * TUNING.tickRate) };
-  }
-  const current = tank.ramp!;
-  current.tick = Math.min(current.ticks, current.tick + 1);
-  const t = current.tick / current.ticks;
-  const eased = t * t * (3 - 2 * t);
-  tank.speed = current.from + (current.target - current.from) * eased;
-  const dx = Math.cos(tank.hull) * tank.speed * DT;
-  const dy = Math.sin(tank.hull) * tank.speed * DT;
-  // Axis-separated movement allows sliding along cover; distance per tick is below the hull radius.
-  if (!blocked(map, tank.x + dx, tank.y)) tank.x += dx;
-  if (!blocked(map, tank.x, tank.y + dy)) tank.y += dy;
+  const cap = speedCap(map, tank.x, tank.y, input.silent) * mobility;
+  const desiredX = moving ? input.x / magnitude * cap : 0;
+  const desiredY = moving ? input.y / magnitude * cap : 0;
+  // World velocity persists independently of the hull: steering redirects momentum, not position.
+  let vx = tank.vx ?? Math.cos(tank.hull) * tank.speed;
+  let vy = tank.vy ?? Math.sin(tank.hull) * tank.speed;
+  const blend = 1 - Math.exp(-DT / (moving ? TUNING.driveResponseSeconds : TUNING.coastDragSeconds));
+  vx += (desiredX - vx) * blend; vy += (desiredY - vy) * blend;
+  if (moving && Math.hypot(vx-desiredX,vy-desiredY)<0.05) { vx=desiredX;vy=desiredY; }
+  if (!moving && Math.hypot(vx,vy)<2) { vx=0;vy=0; }
+  const dx=vx*DT,dy=vy*DT;
+  // Remove only the blocked velocity component so cover allows a tangential slide.
+  if (!blocked(map,tank.x+dx,tank.y)) tank.x+=dx; else vx=0;
+  if (!blocked(map,tank.x,tank.y+dy)) tank.y+=dy; else vy=0;
+  tank.vx=vx;tank.vy=vy;tank.speed=Math.hypot(vx,vy);
+
 }
 export class Simulation {
   private ticks = 0;

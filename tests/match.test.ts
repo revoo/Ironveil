@@ -120,3 +120,5 @@ it('entering a relay ends protection before projectile damage is resolved',()=>{
  const m=new SoloMatch(trainingMap);m.botsEnabled=false;Object.assign(m.actors[0],{x:800,y:448,protection:60});
  m.shells=[{id:1,team:1,x:750,y:448,angle:0,speed:3000,damage:22,remaining:900,charge:0}];m.step();expect(m.actors[0].hp).toBe(78);
 });
+
+it('respawn clears momentum from the previous life',()=>{const m=new SoloMatch(trainingMap);m.botsEnabled=false;Object.assign(m.actors[0],{hp:0,respawn:1,vx:180,vy:100});m.step();expect(m.actors[0].vx).toBe(0);expect(m.actors[0].vy).toBe(0);expect(m.actors[0].speed).toBe(0);});
